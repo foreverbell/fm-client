@@ -1,0 +1,9 @@
+# vim
+*swp
+
+# stack
+stack.yaml
+.stack-work/
+
+# debug
+passport

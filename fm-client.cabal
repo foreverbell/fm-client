@@ -1,0 +1,52 @@
+name:                fm-client
+version:             0.1.0.0
+synopsis:            FM Client.
+homepage:            http://github.com/foreverbell/fm-client#readme
+license:             BSD3
+license-file:        LICENSE
+author:              foreverbell
+maintainer:          dql.foreverbell@gmail.com
+copyright:           2016 foreverbell
+category:            Music
+build-type:          Simple
+cabal-version:       >=1.10
+
+source-repository head
+  type:     git
+  location: https://github.com/foreverbell/fm-client
+
+library
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  ghc-options:         -O2 -W -fwarn-tabs
+  build-depends:       base >= 4.8 && < 5
+                     , random
+                     , time
+                     , exceptions
+                     , process
+                     , mtl
+                     , transformers
+                     , vector
+                     , bytestring
+                     , text
+                     , http-client
+                     , http-types
+                     , aeson
+                     , base64-bytestring
+                     , cipher-aes
+                     , cryptohash
+  exposed-modules:
+    FM.FM
+    FM.NetEase
+    FM.Player
+    FM.Song
+  other-modules:
+    FM.NetEase.Crypto
+    FM.NetEase.JSON
+
+executable fm
+  hs-source-dirs:      exe
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  ghc-options:         -dynamic -O2 -W -fwarn-tabs
+  build-depends:       base, fm-client, transformers
