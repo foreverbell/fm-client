@@ -23,6 +23,7 @@ import           Data.List (find)
 import           Data.Time.Clock (getCurrentTime)
 import           Data.Typeable
 import qualified Network.HTTP.Client as HTTP
+import qualified Network.HTTP.Client.TLS as HTTP
 import qualified Network.HTTP.Types.Header as HTTP
 import qualified Network.HTTP.Types.Status as HTTP
 import qualified Network.HTTP.Types.URI as HTTP
@@ -48,6 +49,7 @@ data Session = Session {
   sessionManager        :: HTTP.Manager
 , sessionRequestHeaders :: HTTP.RequestHeaders
 , sessionCookies        :: IORef HTTP.CookieJar
+, sessionSecure         :: Bool
 }
 
 data HTTPMethod = Post | Get | PostCookies
@@ -73,25 +75,24 @@ sendRequest Session {..} method url query = liftIO $ case method of
     Post -> catch (post False) (throwM . NetEaseHTTPException)
     PostCookies -> catch (post True) (throwM . NetEaseHTTPException)
   where
+    initRequest request = do
+      cookies <- liftIO $ readIORef sessionCookies
+      return request { HTTP.requestHeaders = sessionRequestHeaders
+                     , HTTP.cookieJar = Just cookies
+                     , HTTP.secure = sessionSecure
+                     , HTTP.port = if sessionSecure then 443 else 80
+                     }
+
     post saveCookies = do
-      initialRequest <- liftIO $ HTTP.parseUrl url
-      cookies <- readIORef sessionCookies
-      let request = initialRequest { HTTP.method = "POST"
-                                   , HTTP.requestHeaders = sessionRequestHeaders
-                                   , HTTP.cookieJar = Just cookies
-                                   , HTTP.requestBody = HTTP.RequestBodyBS $ fromQuery query
-                                   }
-      send saveCookies request
+      initialRequest <- liftIO $ initRequest =<< HTTP.parseUrl url
+      send saveCookies $ initialRequest { HTTP.method = "POST"
+                                        , HTTP.requestBody = HTTP.RequestBodyBS $ fromQuery query
+                                        }
 
     get = do
       let action = mconcat [ url, "?", BS8.unpack $ fromQuery query ]
-      initialRequest <- liftIO $ HTTP.parseUrl action
-      cookies <- readIORef sessionCookies
-      let request = initialRequest { HTTP.method = "GET"
-                                   , HTTP.requestHeaders = sessionRequestHeaders
-                                   , HTTP.cookieJar = Just cookies
-                                   }
-      send False request
+      initialRequest <- liftIO $ initRequest =<< HTTP.parseUrl action
+      send False $ initialRequest { HTTP.method = "GET" }
 
     send saveCookies request = do
       response <- fmap BL.toStrict <$> liftIO (HTTP.httpLbs request sessionManager)
@@ -107,11 +108,11 @@ sendRequest Session {..} method url query = liftIO $ case method of
             Right (ResponseMessage 200 _) -> return body
             Right (ResponseMessage rc m) -> throwM $ NetEaseOtherExceptipon rc m
             Left err -> throwM $ NetEaseParseException err
-        _ -> liftIO $ throwM (NetEaseStatusCodeException statusCode response)
+        _ -> throwM (NetEaseStatusCodeException statusCode response)
 
-initSession :: (MonadIO m) => m Session
-initSession = do
-  sessionManager <- liftIO $ HTTP.newManager HTTP.defaultManagerSettings
+initSession :: (MonadIO m) => Bool -> m Session
+initSession sessionSecure = do
+  sessionManager <- liftIO $ HTTP.newManager (if sessionSecure then HTTP.tlsManagerSettings else HTTP.defaultManagerSettings)
   let sessionRequestHeaders = [ (HTTP.hAccept, "*/*")
                               , (HTTP.hAcceptEncoding, "gzip,deflate,sdch")
                               , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
