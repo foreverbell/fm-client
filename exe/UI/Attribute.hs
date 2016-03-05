@@ -13,27 +13,27 @@ import           Brick.Types (Widget)
 import           Data.Default.Class
 import qualified Graphics.Vty as V
 
-attrBanner :: AttrName
-attrBanner = "banner"
+bannerAttr :: AttrName
+bannerAttr = "banner"
 
 mkBanner :: String -> Widget
-mkBanner t = withAttr attrBanner (str t)
+mkBanner t = withAttr bannerAttr (str t)
 
-attrSelected :: AttrName
-attrSelected = "selected"
+selectedAttr :: AttrName
+selectedAttr = "selected"
 
 mkSelected :: String -> Widget
-mkSelected t = withAttr attrSelected (str $ "-> " ++ t)
+mkSelected t = withAttr selectedAttr (str $ "-> " ++ t)
 
-attrUnselected :: AttrName
-attrUnselected = "unselected"
+unselectedAttr :: AttrName
+unselectedAttr = "unselected"
 
 mkUnselected :: String -> Widget
-mkUnselected t = withAttr attrUnselected (str $ "   " ++ t)
+mkUnselected t = withAttr unselectedAttr (str $ "   " ++ t)
 
 attributeMap :: AttrMap
 attributeMap = attrMap def 
-  [ (attrBanner, V.defAttr `V.withForeColor` V.yellow)
-  , (attrSelected, V.defAttr `V.withForeColor` V.cyan)
-  , (attrUnselected, V.defAttr `V.withForeColor` V.white)
+  [ (bannerAttr, V.defAttr `V.withForeColor` V.yellow)
+  , (selectedAttr, V.defAttr `V.withForeColor` V.cyan)
+  , (unselectedAttr, V.defAttr `V.withForeColor` V.white)
   ]

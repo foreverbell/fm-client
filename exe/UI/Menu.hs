@@ -6,12 +6,10 @@ module UI.Menu (
 , playerMenu
 ) where
 
-import qualified Brick.AttrMap as UI
 import qualified Brick.Main as UI
 import qualified Brick.Types as UI
 import qualified Brick.Widgets.Center as UI
 import qualified Brick.Widgets.Core as UI
-import qualified Brick.Util as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Attribute as UI
 
@@ -27,8 +25,8 @@ data MusicSource = NetEaseFM
   deriving (Enum, Bounded, Eq)
 
 instance Show MusicSource where
-  show NetEaseFM = "NetEase FM"
-  show NetEaseDailyRecommendation = "NetEase Daily Recommendation"
+  show NetEaseFM = "NetEase Cloud Music FM"
+  show NetEaseDailyRecommendation = "NetEase Cloud Music Daily Recommendation"
 
 safeSucc :: (Enum a, Bounded a, Eq a) => Bool -> a -> a
 safeSucc cyclic x 
@@ -39,9 +37,6 @@ safePred :: (Enum a, Bounded a, Eq a) => Bool -> a -> a
 safePred cyclic x
   | x == minBound = if cyclic then maxBound else minBound
   | otherwise = pred x
-
-selectedAttr :: UI.AttrName
-selectedAttr = "selected"
 
 sourceMenuDraw :: MusicSource -> [UI.Widget]
 sourceMenuDraw state = [ui]
