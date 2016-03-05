@@ -35,8 +35,7 @@ library
                      , http-types
                      , aeson
                      , base64-bytestring
-                     , cipher-aes
-                     , cryptohash
+                     , cryptonite
   exposed-modules:
     FM.FM
     FM.NetEase

@@ -7,26 +7,29 @@ module FM.NetEase.Crypto (
 , encryptPassword
 ) where
 
-import qualified Crypto.Cipher.AES as AES
-import qualified Crypto.Hash.MD5 as MD5
+import qualified Crypto.Error as C
+import qualified Crypto.Cipher.AES as C
+import qualified Crypto.Cipher.Types as C
+import qualified Crypto.Hash as C
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Base64 as Base64
 import           Data.Char (ord)
+import           Data.Maybe (fromJust)
 import           Numeric (showHex)
 
 toHex :: (Integral a, Show a) => a -> BS.ByteString
 toHex n = BS8.pack (showHex n [])
 
 encryptAES :: BS.ByteString -> BS.ByteString -> BS.ByteString
-encryptAES text key = encrypt (encrypt text nonce) key
+encryptAES key text = encrypt key (encrypt ("0CoJUm6Qyw8W8jud" :: BS.ByteString) text)
   where
-    nonce = "0CoJUm6Qyw8W8jud" :: BS.ByteString
-    encrypt text key = Base64.encode $ AES.encryptCBC (AES.initAES key) iv padded
+    encrypt key text = Base64.encode $ C.cbcEncrypt cipher iv plain
       where
-        padded = let need = 16 - BS.length text `mod` 16 
-                  in text `mappend` BS.replicate need (toEnum need)
-        iv = "0102030405060708" :: BS.ByteString
+        cipher = fromJust $ C.maybeCryptoError (C.cipherInit key) :: C.AES128
+        plain = text `mappend` BS.replicate k (toEnum k)
+          where k = 16 - BS.length text `mod` 16 
+        iv = fromJust $ C.makeIV ("0102030405060708" :: BS.ByteString)
 
 encryptRSA :: BS.ByteString -> BS.ByteString
 encryptRSA text = zfill 256 $ toHex $ (base^publicKey) `mod` modulo
@@ -47,6 +50,4 @@ encryptRSA text = zfill 256 $ toHex $ (base^publicKey) `mod` modulo
                            ] :: Integer
 
 encryptPassword :: BS.ByteString -> BS.ByteString
-encryptPassword = hexDigest . MD5.hash
-  where
-    hexDigest = mconcat . map toHex . concatMap (\w -> [fromEnum w `div` 16, fromEnum w `mod` 16]) . BS.unpack
+encryptPassword = BS8.pack . show . C.hashWith C.MD5

@@ -135,7 +135,7 @@ createSecretKey n = mconcat <$> replicateM n (toHex <$> liftIO (getStdRandom $ r
 createEncryptedText :: (MonadIO m) => BS.ByteString -> m EncryptedData
 createEncryptedText text = do
   secretKey <- createSecretKey 16
-  return EncryptedData { encryptedText = encryptAES text secretKey, encryptedSecretKey = encryptRSA secretKey }
+  return EncryptedData { encryptedText = encryptAES secretKey text, encryptedSecretKey = encryptRSA secretKey }
 
 createEncryptedLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m EncryptedData
 createEncryptedLogin username password = createEncryptedText $ encodeJSON $ JSON.object 
