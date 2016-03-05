@@ -11,6 +11,8 @@ module FM.NetEase (
 ) where
 
 import           Control.Exception
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import           Control.Monad.Catch (throwM)
 import qualified Data.Aeson as JSON
 import           Data.Aeson ((.:), (.:?))
@@ -29,7 +31,6 @@ import qualified Network.HTTP.Types.Status as HTTP
 import qualified Network.HTTP.Types.URI as HTTP
 import           System.Random (getStdRandom, randomR)
 
-import           FM.FM
 import qualified FM.Song as Song
 import           FM.NetEase.JSON
 import           FM.NetEase.Crypto

@@ -11,6 +11,8 @@ module FM.Player (
 ) where
 
 import Control.Monad.IO.Class
+import Control.Monad.Reader
+import Control.Monad.State
 import Control.Concurrent (forkFinally, killThread)
 import Control.Concurrent.MVar
 import Data.IORef

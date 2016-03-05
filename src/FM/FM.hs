@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FunctionalDependencies #-}
 
 module FM.FM ( 
   FM
@@ -9,14 +8,13 @@ module FM.FM (
 , SongLocation
 , PlayerHandle (..)
 , PlayingState (..)
-, module MonadTransformer
 ) where
 
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.MVar (MVar, newEmptyMVar)
-import Control.Monad.IO.Class as MonadTransformer
-import Control.Monad.Reader as MonadTransformer
-import Control.Monad.State as MonadTransformer
+import Control.Monad.IO.Class
+import Control.Monad.Reader
+import Control.Monad.State
 import Data.IORef (IORef, newIORef)
 import System.Process (ProcessHandle)
 import System.IO (Handle)
@@ -48,12 +46,14 @@ data FMState = FMState {
 newtype FM s a = FM (ReaderT s (StateT FMState IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader s, MonadState FMState)
 
-runFM :: s -> FM s a -> IO a
-runFM session (FM fm) = do
-  playerHandle <- newEmptyMVar
-  playingState <- newIORef Stop
-  playingLength <- newEmptyMVar
-  currentLocation <- newEmptyMVar
-  currentLyrics <- newEmptyMVar
-  let currentVolume = 100
-  evalStateT (runReaderT fm session) FMState {..}
+runFM :: s -> Maybe FMState -> FM s a -> IO (a, FMState)
+runFM session state (FM fm) = case state of
+  Just state -> runStateT (runReaderT fm session) state
+  Nothing -> do
+    playerHandle <- newEmptyMVar
+    playingState <- newIORef Stop
+    playingLength <- newEmptyMVar
+    currentLocation <- newEmptyMVar
+    currentLyrics <- newEmptyMVar
+    let currentVolume = 100
+    runStateT (runReaderT fm session) FMState {..}

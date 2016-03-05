@@ -49,5 +49,7 @@ executable fm
   hs-source-dirs:      exe
   main-is:             Main.hs
   default-language:    Haskell2010
-  ghc-options:         -dynamic -O2 -W -fwarn-tabs
-  build-depends:       base, fm-client, transformers
+  ghc-options:         -dynamic -threaded -O2 -W -fwarn-tabs 
+  build-depends:       base, fm-client, transformers, brick, vty
+  other-modules:
+    Login
