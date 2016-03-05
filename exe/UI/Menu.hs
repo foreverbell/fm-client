@@ -12,8 +12,10 @@ import qualified Brick.Types as UI
 import qualified Brick.Widgets.Center as UI
 import qualified Brick.Widgets.Core as UI
 import qualified Brick.Util as UI
-import           Control.Monad.IO.Class (liftIO)
 import qualified Graphics.Vty as UI
+import qualified UI.Attribute as UI
+
+import           Control.Monad.IO.Class (liftIO)
 import           System.Exit (exitSuccess)
 
 import           FM.FM
@@ -45,12 +47,12 @@ sourceMenuDraw :: MusicSource -> [UI.Widget]
 sourceMenuDraw state = [ui]
   where
     ui = UI.vCenter $ UI.vBox [ title, UI.str " ", menu ]
-    title = UI.hCenter (UI.str "Select Source")
+    title = UI.hCenter (UI.mkBanner "Select Source")
     menu = UI.hCenter $ UI.vBox $ do
-      source <- [minBound :: MusicSource, maxBound]
-      let mkItem | source == state = UI.withAttr selectedAttr
-                 | otherwise = id
-      return $ mkItem $ UI.str $ show source
+      source <- [minBound, maxBound] :: [MusicSource]
+      let mkItem | source == state = UI.mkSelected
+                 | otherwise = UI.mkUnselected
+      return $ mkItem (show source)
 
 sourceMenuEvent :: MusicSource -> UI.Event -> UI.EventM (UI.Next MusicSource)
 sourceMenuEvent state event = case event of
@@ -66,7 +68,7 @@ sourceMenuApp :: UI.App MusicSource UI.Event
 sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
                        , UI.appStartEvent = return
                        , UI.appHandleEvent = sourceMenuEvent
-                       , UI.appAttrMap = const $ UI.attrMap UI.defAttr [ (selectedAttr, UI.black `UI.on` UI.yellow) ]
+                       , UI.appAttrMap = const $ UI.attributeMap
                        , UI.appLiftVtyEvent = id
                        , UI.appChooseCursor = UI.neverShowCursor
                        }

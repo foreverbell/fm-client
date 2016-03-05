@@ -5,15 +5,16 @@ module UI.Login (
   login
 ) where
 
-import qualified Brick.AttrMap as UI
 import qualified Brick.Main as UI
 import qualified Brick.Types as UI
 import qualified Brick.Widgets.Center as UI
 import qualified Brick.Widgets.Core as UI
 import           Brick.Widgets.Core ((<+>))
 import qualified Brick.Widgets.Edit as UI
-import           Control.Monad.IO.Class (liftIO)
 import qualified Graphics.Vty as UI
+import qualified UI.Attribute as UI
+
+import           Control.Monad.IO.Class (liftIO)
 import           System.Exit (exitSuccess)
 
 data EditorType = UserNameEditor | PasswordEditor
@@ -44,7 +45,7 @@ loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
     ui = UI.vCenter $ UI.vBox $ map UI.hCenter 
-           [ UI.str "NetEase Login"
+           [ UI.mkBanner "NetEase Login"
            , UI.str " "
            , UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
            , UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
@@ -70,7 +71,7 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appChooseCursor = loginCursor
                   , UI.appHandleEvent = loginEvent
                   , UI.appStartEvent = return
-                  , UI.appAttrMap = const $ UI.attrMap UI.defAttr [ ]
+                  , UI.appAttrMap = const $ UI.attributeMap
                   , UI.appLiftVtyEvent = id
                   }
 

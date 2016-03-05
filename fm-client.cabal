@@ -51,7 +51,8 @@ executable fm
   main-is:             Main.hs
   default-language:    Haskell2010
   ghc-options:         -dynamic -threaded -O2 -W -fwarn-tabs 
-  build-depends:       base, fm-client, transformers, brick, vty
+  build-depends:       base, fm-client, transformers, data-default-class, brick, vty
   other-modules:
+    UI.Attribute
     UI.Login
     UI.Menu
