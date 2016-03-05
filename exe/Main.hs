@@ -3,6 +3,7 @@ module Main where
 import Control.Monad.IO.Class
 import Control.Monad (void)
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar
 
 import FM.FM
 import FM.NetEase
@@ -24,13 +25,15 @@ test = void $ do
     liftIO $ mapM print fm
     lyrics <- liftIO $ fetchLyricsIO session (fm !! 0)
     liftIO $ print lyrics
-    play (fm !! 0) (fetchLyricsIO session) (const $ return ())
+    signal <- liftIO $ newEmptyMVar
+    play (fm !! 0) (fetchLyricsIO session) $ \b -> do
+      putStrLn $ if b then "normally exit" else "user interrupt"
+      putMVar signal ()
     delay 5
     pause
     delay 1
     resume
-    delay 1
-    stop
+    liftIO $ takeMVar signal
 
 main = do
   UI.login
