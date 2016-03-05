@@ -8,12 +8,14 @@ import FM.FM
 import FM.NetEase
 import FM.Player
 
-import qualified Login as UI
+import qualified UI.Login as UI
+import qualified UI.Menu as UI
 
+delay :: MonadIO m => Int -> m ()
 delay seconds = liftIO $ threadDelay (seconds * 1000000)
 
-main = void $ do
-  UI.login
+test :: IO ()
+test = void $ do
   session <- initSession True
   [username, password] <- take 2 . lines <$> liftIO (readFile "passport")
   runFM session Nothing $ do
@@ -29,3 +31,8 @@ main = void $ do
     resume
     delay 1
     stop
+
+main = do
+  UI.login
+  UI.playerMenu =<< UI.sourceMenu
+  test

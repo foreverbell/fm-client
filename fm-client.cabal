@@ -40,6 +40,7 @@ library
     FM.FM
     FM.NetEase
     FM.Player
+    FM.Session
     FM.Song
   other-modules:
     FM.NetEase.Crypto
@@ -52,4 +53,5 @@ executable fm
   ghc-options:         -dynamic -threaded -O2 -W -fwarn-tabs 
   build-depends:       base, fm-client, transformers, brick, vty
   other-modules:
-    Login
+    UI.Login
+    UI.Menu

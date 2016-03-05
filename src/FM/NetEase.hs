@@ -32,6 +32,7 @@ import qualified Network.HTTP.Types.Status as HTTP
 import qualified Network.HTTP.Types.URI as HTTP
 import           System.Random (getStdRandom, randomR)
 
+import           FM.Session
 import qualified FM.Song as Song
 import           FM.NetEase.JSON
 import           FM.NetEase.Crypto
@@ -48,6 +49,8 @@ data Session = Session {
 , sessionCookies        :: IORef HTTP.CookieJar
 , sessionSecure         :: Bool
 }
+
+instance IsSession Session
 
 data HTTPMethod = Post | Get | PostCookies
 
