@@ -24,7 +24,7 @@ import System.Process (runInteractiveProcess, terminateProcess)
 import qualified FM.Song as Song
 import           FM.FM
 
-play :: (MonadIO m, MonadState FMState m) => Song.Song -> (Song.Song -> IO (Maybe Song.Lyrics)) -> m ()
+play :: (MonadIO m, MonadState FMState m) => Song.Song -> (Song.Song -> IO Song.Lyrics) -> m ()
 play song@Song.Song {..} fetchLyrics = do
   fm@FMState {..} <- get
   (inHandle, outHandle, _, processId) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing

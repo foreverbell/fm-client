@@ -7,6 +7,7 @@ module FM.Song (
 ) where
 
 import Data.List (intercalate)
+import Data.Default.Class
 
 type SongId = Int
 
@@ -21,6 +22,9 @@ data Song = Song {
 }
 
 newtype Lyrics = Lyrics [String]
+
+instance Default Lyrics where
+  def = Lyrics [ "[00:00.00]No lyrics." ]
 
 instance Show Song where
   show Song {..} = unlines [ "Song {"

@@ -43,11 +43,12 @@ switchEditor state@State {..} = state { currentEditor = newEditor }
 loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
-    ui = UI.vCenter $ UI.vBox $ map UI.hCenter [ UI.str "NetEase Login"
-                                            , UI.str " "
-                                            , UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
-                                            , UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
-                                            ]
+    ui = UI.vCenter $ UI.vBox $ map UI.hCenter 
+           [ UI.str "NetEase Login"
+           , UI.str " "
+           , UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
+           , UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
+           ]
 
 loginEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
 loginEvent state event = case event of

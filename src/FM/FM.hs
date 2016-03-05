@@ -39,7 +39,7 @@ data FMState = FMState {
 , playingState    :: IORef PlayingState
 , playingLength   :: MVar SongLocation
 , currentLocation :: MVar SongLocation
-, currentLyrics   :: MVar (Maybe Song.Lyrics)
+, currentLyrics   :: MVar Song.Lyrics
 , currentVolume   :: Int
 }
 

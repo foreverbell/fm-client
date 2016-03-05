@@ -20,6 +20,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
 import           Data.Char (isDigit)
+import           Data.Default.Class (def)
 import           Data.IORef
 import           Data.List (find)
 import           Data.Time.Clock (getCurrentTime)
@@ -38,13 +39,8 @@ import           FM.NetEase.Crypto
 class IsQuery q where
   fromQuery :: q -> BS.ByteString
 
-data EmptyQuery = EmptyQuery
-
-instance IsQuery EmptyQuery where
-  fromQuery EmptyQuery = BS.empty
-
-emptyQuery :: EmptyQuery
-emptyQuery = EmptyQuery
+instance IsQuery () where
+  fromQuery () = BS.empty
 
 data Session = Session {
   sessionManager        :: HTTP.Manager
@@ -184,7 +180,7 @@ login username password = do
 fetchFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchFM = do
   session <- ask
-  body <- sendRequest session Get "http://music.163.com/api/radio/get" emptyQuery
+  body <- sendRequest session Get "http://music.163.com/api/radio/get" ()
   case decodeFM body of
     Left err -> liftIO $ throwM $ NetEaseParseException err
     Right fm -> return fm
@@ -228,9 +224,7 @@ trash song@Song.Song {..} = do
   sendRequest session Get "http://music.163.com/api/radio/trash/add" (Trash uid)
   return song { Song.starred = False }
 
-fetchLyricsIO :: Session -> Song.Song -> IO (Maybe Song.Lyrics)
+fetchLyricsIO :: Session -> Song.Song -> IO Song.Lyrics
 fetchLyricsIO session Song.Song {..} = do
   body <- sendRequest session Get "http://music.163.com/api/song/lyric" (FetchLyrics uid)
-  case decodeLyrics body of
-    Right lyrics -> return $ Just lyrics
-    Left _ -> return Nothing
+  return $ either (const def) id (decodeLyrics body)
