@@ -13,8 +13,9 @@ module FM.Player (
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Control.Monad.State
-import Control.Concurrent (forkFinally, killThread)
+import Control.Concurrent (forkFinally, killThread, myThreadId, throwTo)
 import Control.Concurrent.MVar
+import Control.Exception (asyncExceptionFromException, AsyncException (..))
 import Data.IORef
 import Data.List (isPrefixOf)
 
@@ -24,10 +25,13 @@ import System.Process (runInteractiveProcess, terminateProcess)
 import qualified FM.Song as Song
 import           FM.FM
 
-play :: (MonadIO m, MonadState FMState m) => Song.Song -> (Song.Song -> IO Song.Lyrics) -> m ()
-play song@Song.Song {..} fetchLyrics = do
+type FetchLyrics = Song.Song -> IO Song.Lyrics
+type NotifyDone = Bool -> IO ()
+
+play :: (MonadIO m, MonadState FMState m) => Song.Song -> FetchLyrics -> NotifyDone -> m ()
+play song@Song.Song {..} fetchLyrics notify = do
   fm@FMState {..} <- get
-  (inHandle, outHandle, _, processId) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
+  (inHandle, outHandle, _, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
         hSetBinaryMode h False
         hSetBuffering h LineBuffering
@@ -41,16 +45,22 @@ play song@Song.Song {..} fetchLyrics = do
         hPutStrLn inHandle $ "V " ++ show currentVolume
         hPutStrLn inHandle $ "L " ++ mp3URL
         loop (outHandle, fm) True =<< hGetLine outHandle
-  let cleanUp = \_ -> void $ do
-        PlayerHandle {..} <- readMVar playerHandle
-        terminateProcess processId
+  let cleanUp = \e -> do
+        PlayerContext {..} <- readMVar playerContext
+        terminateProcess processHandle
         writeIORef playingState Stop
         tryTakeMVar playingLength
         tryTakeMVar currentLocation
         tryTakeMVar currentLyrics
-        takeMVar playerHandle
-  forkThreadId <- liftIO $ forkFinally playerThread cleanUp
-  liftIO $ putMVar playerHandle PlayerHandle {..}
+        takeMVar playerContext
+        case e of
+          Right _ -> notify True
+          Left e -> case asyncExceptionFromException e of
+                      Just ThreadKilled -> notify False
+                      _ -> throwTo parentThreadId e
+  parentThreadId <- liftIO myThreadId
+  childThreadId <- liftIO $ forkFinally playerThread cleanUp
+  liftIO $ putMVar playerContext PlayerContext {..}
   liftIO $ writeIORef playingState (Playing song)
   liftIO $ void $ takeMVar exitLock
     where
@@ -83,7 +93,7 @@ pause = do
   state <- liftIO $ readIORef playingState
   case state of
     Playing s -> do
-      PlayerHandle {..} <- liftIO $ readMVar playerHandle
+      PlayerContext {..} <- liftIO $ readMVar playerContext
       liftIO $ hPutStrLn inHandle "P"
       liftIO $ writeIORef playingState (Paused s)
     _ -> return ()
@@ -94,7 +104,7 @@ resume = do
   state <- liftIO $ readIORef playingState
   case state of
     Paused s -> do
-      PlayerHandle {..} <- liftIO $ readMVar playerHandle
+      PlayerContext {..} <- liftIO $ readMVar playerContext
       liftIO $ hPutStrLn inHandle "P"
       liftIO $ writeIORef playingState (Playing s)
     _ -> return ()
@@ -106,8 +116,8 @@ stop = do
   case state of
     Stop -> return ()
     _ -> do
-      PlayerHandle {..} <- liftIO $ readMVar playerHandle
-      liftIO $ killThread forkThreadId
+      PlayerContext {..} <- liftIO $ readMVar playerContext
+      liftIO $ killThread childThreadId
 
 setVolume :: (MonadIO m, MonadState FMState m) => Int -> m ()
 setVolume vol = do
@@ -115,7 +125,7 @@ setVolume vol = do
            | vol > 100 = 100
            | otherwise = vol
   FMState {..} <- get
-  h <- fmap inHandle <$> liftIO (tryReadMVar playerHandle)
+  h <- fmap inHandle <$> liftIO (tryReadMVar playerContext)
   maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show vol')) h
   modify $ \fm -> fm { currentVolume = vol' }
 

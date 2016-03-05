@@ -24,7 +24,7 @@ test = void $ do
     liftIO $ mapM print fm
     lyrics <- liftIO $ fetchLyricsIO session (fm !! 0)
     liftIO $ print lyrics
-    play (fm !! 0) (fetchLyricsIO session)
+    play (fm !! 0) (fetchLyricsIO session) (const $ return ())
     delay 5
     pause
     delay 1

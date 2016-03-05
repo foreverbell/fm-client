@@ -48,18 +48,10 @@ parseSong (JSON.Object v) = do
   mp3URL <- v .: "mp3Url"
   title <- v .: "name"
   uid <- v .: "id"
-  titleAliases <- parseTitleAliases =<< (v .: "alias")
   artists <- parseArtists =<< (v .: "artists")
   album <- parseAlbum =<< (v .: "album")
   return Song.Song {..}
 parseSong _ = mzero
-
-parseTitleAliases :: JSON.Value -> JSON.Parser [String]
-parseTitleAliases (JSON.Array v) = mapM parseOne (V.toList v)
-  where
-    parseOne (JSON.String t) = return $ T.unpack t
-    parseOne _ = mzero
-parseTitleAliases _ = mzero
 
 parseArtists :: JSON.Value -> JSON.Parser [String]
 parseArtists (JSON.Array v) = mapM parseOne (V.toList v)

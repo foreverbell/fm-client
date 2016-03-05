@@ -14,7 +14,6 @@ type SongId = Int
 data Song = Song {
   uid :: SongId
 , title :: String
-, titleAliases :: [String]
 , artists :: [String]
 , album :: String
 , mp3URL :: String
@@ -30,7 +29,6 @@ instance Show Song where
   show Song {..} = unlines [ "Song {"
                            , "  uid = " ++ show uid ++ ","
                            , "  title = " ++ title ++ ","
-                           , "  titleAliases = " ++ dumpList titleAliases ++ ","
                            , "  artists = " ++ dumpList artists ++ ","
                            , "  album = " ++ album ++ ","
                            , "  mp3URL = " ++ mp3URL ++ ","

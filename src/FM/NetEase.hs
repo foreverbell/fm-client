@@ -48,14 +48,14 @@ data Session = Session {
 , sessionRequestHeaders :: HTTP.RequestHeaders
 , sessionCookies        :: IORef HTTP.CookieJar
 , sessionSecure         :: Bool
-}
+} deriving (Typeable)
 
 instance IsSession Session
 
 data HTTPMethod = Post | Get | PostCookies
 
 data NetEaseException = NetEaseHTTPException HTTP.HttpException
-                      | NetEaseStatusCodeException Int (HTTP.Response BS.ByteString)
+                      | NetEaseStatusCodeException Int (HTTP.Response String)
                       | NetEaseParseException String
                       | NetEaseOtherExceptipon Int (Maybe String)
   deriving (Typeable, Show)
@@ -108,7 +108,7 @@ sendRequest Session {..} method url query = liftIO $ case method of
             Right (ResponseMessage 200 _) -> return body
             Right (ResponseMessage rc m) -> throwM $ NetEaseOtherExceptipon rc m
             Left err -> throwM $ NetEaseParseException err
-        _ -> throwM (NetEaseStatusCodeException statusCode response)
+        _ -> throwM (NetEaseStatusCodeException statusCode (BS8.unpack <$> response))
 
 initSession :: (MonadIO m) => Bool -> m Session
 initSession sessionSecure = do

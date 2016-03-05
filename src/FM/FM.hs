@@ -6,7 +6,7 @@ module FM.FM (
 , runFM
 , FMState (..)
 , SongLocation
-, PlayerHandle (..)
+, PlayerContext (..)
 , PlayingState (..)
 ) where
 
@@ -25,17 +25,18 @@ data PlayingState = Playing Song.Song
                   | Paused Song.Song
                   | Stop
 
-data PlayerHandle = PlayerHandle {
-  forkThreadId :: ThreadId
-, inHandle     :: Handle
-, outHandle    :: Handle
-, processId    :: ProcessHandle
+data PlayerContext = PlayerContext {
+  inHandle       :: Handle
+, outHandle      :: Handle
+, processHandle  :: ProcessHandle
+, parentThreadId :: ThreadId
+, childThreadId  :: ThreadId
 }
 
 type SongLocation = (Int, Double)
 
 data FMState = FMState {
-  playerHandle    :: MVar PlayerHandle
+  playerContext   :: MVar PlayerContext
 , playingState    :: IORef PlayingState
 , playingLength   :: MVar SongLocation
 , currentLocation :: MVar SongLocation
@@ -50,7 +51,7 @@ runFM :: s -> Maybe FMState -> FM s a -> IO (a, FMState)
 runFM session state (FM fm) = case state of
   Just state -> runStateT (runReaderT fm session) state
   Nothing -> do
-    playerHandle <- newEmptyMVar
+    playerContext <- newEmptyMVar
     playingState <- newIORef Stop
     playingLength <- newEmptyMVar
     currentLocation <- newEmptyMVar
