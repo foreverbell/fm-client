@@ -1,5 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RecordWildCards, FlexibleContexts #-}
 
 module FM.Player ( 
   play
@@ -23,7 +22,7 @@ import System.IO
 import System.Process (runInteractiveProcess, terminateProcess)
 
 import qualified FM.Song as Song
-import           FM.FM
+import           FM.FMState
 
 type FetchLyrics = Song.Song -> IO Song.Lyrics
 type NotifyDone = Bool -> IO ()
@@ -48,8 +47,8 @@ play song@Song.Song {..} fetchLyrics notify = do
   let cleanUp = \e -> do
         PlayerContext {..} <- readMVar playerContext
         terminateProcess processHandle
-        writeIORef playingState Stop
-        tryTakeMVar playingLength
+        writeIORef playerState Stop
+        tryTakeMVar totalLength
         tryTakeMVar currentLocation
         tryTakeMVar currentLyrics
         takeMVar playerContext
@@ -61,7 +60,7 @@ play song@Song.Song {..} fetchLyrics notify = do
   parentThreadId <- liftIO myThreadId
   childThreadId <- liftIO $ forkFinally playerThread cleanUp
   liftIO $ putMVar playerContext PlayerContext {..}
-  liftIO $ writeIORef playingState (Playing song)
+  liftIO $ writeIORef playerState (Playing song)
   liftIO $ void $ takeMVar exitLock
     where
       loop :: (Handle, FMState) -> Bool -> String -> IO ()
@@ -70,7 +69,7 @@ play song@Song.Song {..} fetchLyrics notify = do
         let ws = words out
         let tracks = read (ws !! 2) :: Int
         let length = read (ws !! 4) :: Double
-        putMVar playingLength (tracks, length)
+        putMVar totalLength (tracks, length)
         putMVar currentLocation (0, 0)
         loop ctx False =<< hGetLine h
       
@@ -90,29 +89,29 @@ play song@Song.Song {..} fetchLyrics notify = do
 pause :: (MonadIO m, MonadState FMState m) => m ()
 pause = do
   FMState {..} <- get
-  state <- liftIO $ readIORef playingState
+  state <- liftIO $ readIORef playerState
   case state of
     Playing s -> do
       PlayerContext {..} <- liftIO $ readMVar playerContext
       liftIO $ hPutStrLn inHandle "P"
-      liftIO $ writeIORef playingState (Paused s)
+      liftIO $ writeIORef playerState (Paused s)
     _ -> return ()
 
 resume :: (MonadIO m, MonadState FMState m) => m ()
 resume = do
   FMState {..} <- get
-  state <- liftIO $ readIORef playingState
+  state <- liftIO $ readIORef playerState
   case state of
     Paused s -> do
       PlayerContext {..} <- liftIO $ readMVar playerContext
       liftIO $ hPutStrLn inHandle "P"
-      liftIO $ writeIORef playingState (Playing s)
+      liftIO $ writeIORef playerState (Playing s)
     _ -> return ()
 
 stop :: (MonadIO m, MonadState FMState m) => m ()
 stop = do
   FMState {..} <- get
-  state <- liftIO $ readIORef playingState
+  state <- liftIO $ readIORef playerState
   case state of
     Stop -> return ()
     _ -> do

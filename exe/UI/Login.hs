@@ -12,7 +12,7 @@ import qualified Brick.Widgets.Core as UI
 import           Brick.Widgets.Core ((<+>))
 import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
-import qualified UI.Attribute as UI
+import qualified UI.Attributes as UI
 
 import           Control.Monad.IO.Class (liftIO)
 import           System.Exit (exitSuccess)

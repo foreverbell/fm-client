@@ -19,7 +19,7 @@ test :: IO ()
 test = void $ do
   session <- initSession True
   [username, password] <- take 2 . lines <$> liftIO (readFile "passport")
-  runFM session Nothing $ do
+  runBoth session Nothing $ do
     login username password
     fm <- fetchFM
     liftIO $ mapM print fm

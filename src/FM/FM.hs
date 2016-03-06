@@ -1,60 +1,51 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, RecordWildCards #-}
 
 module FM.FM ( 
-  FM
-, runFM
+  runSessionOnly
+, runStateOnly
+, runBoth
+, SessionOnly, StateOnly, Both
 , FMState (..)
-, SongLocation
-, PlayerContext (..)
-, PlayingState (..)
+, MusicLocation
+, PlayerState (..)
 ) where
 
-import Control.Concurrent (ThreadId)
-import Control.Concurrent.MVar (MVar, newEmptyMVar)
-import Control.Monad.IO.Class
+import Control.Concurrent.MVar (newEmptyMVar)
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.IORef (IORef, newIORef)
-import System.Process (ProcessHandle)
-import System.IO (Handle)
+import Data.IORef (newIORef)
 
-import qualified FM.Song as Song
+import FM.FMState
+import FM.Session
 
-data PlayingState = Playing Song.Song 
-                  | Paused Song.Song
-                  | Stop
+newtype SessionOnly s a = SessionOnly (ReaderT s IO a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader s)
 
-data PlayerContext = PlayerContext {
-  inHandle       :: Handle
-, outHandle      :: Handle
-, processHandle  :: ProcessHandle
-, parentThreadId :: ThreadId
-, childThreadId  :: ThreadId
-}
+newtype StateOnly a = StateOnly (StateT FMState IO a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadState FMState)
 
-type SongLocation = (Int, Double)
-
-data FMState = FMState {
-  playerContext   :: MVar PlayerContext
-, playingState    :: IORef PlayingState
-, playingLength   :: MVar SongLocation
-, currentLocation :: MVar SongLocation
-, currentLyrics   :: MVar Song.Lyrics
-, currentVolume   :: Int
-}
-
-newtype FM s a = FM (ReaderT s (StateT FMState IO) a)
+newtype Both s a = Both (ReaderT s (StateT FMState IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader s, MonadState FMState)
 
-runFM :: s -> Maybe FMState -> FM s a -> IO (a, FMState)
-runFM session state (FM fm) = case state of
-  Just state -> runStateT (runReaderT fm session) state
-  Nothing -> do
-    playerContext <- newEmptyMVar
-    playingState <- newIORef Stop
-    playingLength <- newEmptyMVar
-    currentLocation <- newEmptyMVar
-    currentLyrics <- newEmptyMVar
-    let currentVolume = 100
-    runStateT (runReaderT fm session) FMState {..}
+initialState :: IO FMState
+initialState = do
+  playerContext <- newEmptyMVar
+  playerState <- newIORef Stop
+  totalLength <- newEmptyMVar
+  currentLocation <- newEmptyMVar
+  currentLyrics <- newEmptyMVar
+  let currentVolume = 100
+  return $ FMState {..}
+
+runSessionOnly :: (IsSession s) => s -> SessionOnly s a -> IO a
+runSessionOnly session (SessionOnly m) = runReaderT m session
+
+runStateOnly :: Maybe FMState -> StateOnly a -> IO (a, FMState)
+runStateOnly state (StateOnly m) = case state of
+  Just state -> runStateT m state
+  Nothing -> runStateT m =<< initialState
+
+runBoth :: (IsSession s) => s -> Maybe FMState -> Both s a -> IO (a, FMState)
+runBoth session state (Both m) = case state of
+  Just state -> runStateT (runReaderT m session) state
+  Nothing -> runStateT (runReaderT m session) =<< initialState

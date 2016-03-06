@@ -1,5 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards, OverloadedStrings #-}
 
 module UI.Menu ( 
   sourceMenu
@@ -11,7 +10,7 @@ import qualified Brick.Types as UI
 import qualified Brick.Widgets.Center as UI
 import qualified Brick.Widgets.Core as UI
 import qualified Graphics.Vty as UI
-import qualified UI.Attribute as UI
+import qualified UI.Attributes as UI
 
 import           Control.Monad.IO.Class (liftIO)
 import           System.Exit (exitSuccess)
@@ -19,6 +18,7 @@ import           System.Exit (exitSuccess)
 import           FM.FM
 import           FM.Session
 import qualified FM.Song as Song
+import qualified FM.NetEase as NetEase
 
 data MusicSource = NetEaseFM
                  | NetEaseDailyRecommendation
@@ -45,8 +45,8 @@ sourceMenuDraw state = [ui]
     title = UI.hCenter (UI.mkBanner "Select Source")
     menu = UI.hCenter $ UI.vBox $ do
       source <- [minBound, maxBound] :: [MusicSource]
-      let mkItem | source == state = UI.mkSelected
-                 | otherwise = UI.mkUnselected
+      let mkItem | source == state = UI.mkFocused
+                 | otherwise = UI.mkUnfocused
       return $ mkItem (show source)
 
 sourceMenuEvent :: MusicSource -> UI.Event -> UI.EventM (UI.Next MusicSource)
@@ -71,12 +71,28 @@ sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
 sourceMenu :: IO MusicSource
 sourceMenu = UI.defaultMain sourceMenuApp minBound
 
+type SongList = ([Song.Song], [Song.Song])
+ 
 data State = State {
   source :: MusicSource
-, playList :: ([Song.Song], [Song.Song])
+, playList :: SongList
+, navigateList :: SongList
 , session :: SomeSession
 , fmState :: Maybe FMState
 }
+
+liftSession :: (IsSession s) => State -> SessionOnly s a -> IO a
+liftSession State {..} m = runSessionOnly (fromSession session) m
+
+liftState :: State -> StateOnly a -> IO (a, State)
+liftState state@State {..} m = do
+  (r, s) <- runStateOnly fmState m
+  return $ (r, state { fmState = Just s })
+
+fetch :: State -> IO [Song.Song]
+fetch state@State {..} = case source of
+  NetEaseFM -> liftSession state NetEase.fetchFM
+  NetEaseDailyRecommendation -> liftSession state NetEase.fetchRListAsFM
 
 playerMenu :: MusicSource -> IO ()
 playerMenu source = undefined

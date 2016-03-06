@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module UI.Attribute ( 
+module UI.Attributes ( 
   attributeMap
 , mkBanner
-, mkSelected
-, mkUnselected
+, mkFocused
+, mkUnfocused
 ) where
 
 import           Brick.AttrMap
@@ -19,21 +19,21 @@ bannerAttr = "banner"
 mkBanner :: String -> Widget
 mkBanner t = withAttr bannerAttr (str t)
 
-selectedAttr :: AttrName
-selectedAttr = "selected"
+focusedAttr :: AttrName
+focusedAttr = "focused"
 
-mkSelected :: String -> Widget
-mkSelected t = withAttr selectedAttr (str $ "-> " ++ t)
+mkFocused :: String -> Widget
+mkFocused t = withAttr focusedAttr (str $ "-> " ++ t)
 
-unselectedAttr :: AttrName
-unselectedAttr = "unselected"
+unfocusedAttr :: AttrName
+unfocusedAttr = "unfocused"
 
-mkUnselected :: String -> Widget
-mkUnselected t = withAttr unselectedAttr (str $ "   " ++ t)
+mkUnfocused :: String -> Widget
+mkUnfocused t = withAttr unfocusedAttr (str $ "   " ++ t)
 
 attributeMap :: AttrMap
 attributeMap = attrMap def 
   [ (bannerAttr, V.defAttr `V.withForeColor` V.yellow)
-  , (selectedAttr, V.defAttr `V.withForeColor` V.cyan)
-  , (unselectedAttr, V.defAttr `V.withForeColor` V.white)
+  , (focusedAttr, V.defAttr `V.withForeColor` V.cyan)
+  , (unfocusedAttr, V.defAttr `V.withForeColor` V.white)
   ]
