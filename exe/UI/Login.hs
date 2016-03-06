@@ -61,21 +61,23 @@ loginDraw State {..} = [ui]
            ]
 
 loginEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
-loginEvent state event = case event of
+loginEvent state@State {..} event = case event of
   UI.EvKey UI.KEsc [] -> liftIO exitSuccess
-  UI.EvKey UI.KEnter [] -> do
-    let [userName] = UI.getEditContents $ userNameEditor state
-    let [password] = UI.getEditContents $ passwordEditor state
-    session <- NetEase.initSession True
-    liftIO $ runSessionOnly session (NetEase.login userName password)
-    UI.suspendAndResume $ do
-      continuation state (SomeSession session)
-      exitSuccess
+  UI.EvKey UI.KEnter [] -> case currentEditor of
+    PasswordEditor -> do
+      let [userName] = UI.getEditContents $ userNameEditor
+      let [password] = UI.getEditContents $ passwordEditor
+      session <- NetEase.initSession True
+      liftIO $ runSessionOnly session (NetEase.login userName password)
+      UI.suspendAndResume $ do
+        continuation (SomeSession session)
+        exitSuccess
+    UserNameEditor -> UI.continue $ switchEditor state
   UI.EvKey (UI.KChar '\t') [] -> UI.continue $ switchEditor state
   UI.EvKey UI.KBackTab [] -> UI.continue $ switchEditor state
   _ -> do
     editor <- UI.handleEvent event (selectEditor state)
-    UI.continue $ case currentEditor state of
+    UI.continue $ case currentEditor of
       UserNameEditor -> state { userNameEditor = editor }
       PasswordEditor -> state { passwordEditor = editor }
 
@@ -92,6 +94,7 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   }
 
 login_cps :: MusicSource -> (SomeSession -> IO ()) -> IO ()
+login_cps NetEasePublicFM cont = cont =<< (SomeSession <$> NetEase.initSession True)
 login_cps source cont = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []

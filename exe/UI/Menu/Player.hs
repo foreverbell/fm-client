@@ -13,8 +13,8 @@ import qualified UI.Attributes as UI
 
 import           UI.Types
 
-import           Control.Concurrent (throwTo, myThreadId, forkFinally)
-import           Control.Concurrent.Chan
+import           Control.Concurrent (throwTo, myThreadId, forkIO, forkFinally)
+import           Control.Concurrent.Chan (Chan, writeChan, newChan)
 import           Control.Monad (void)
 import           Control.Monad.IO.Class (liftIO)
 import           Control.Monad.Cont (Cont, cont)
@@ -35,6 +35,7 @@ data State = State {
 , focusedIndex :: Int
 , session      :: SomeSession
 , fmState      :: FMState
+, fetching     :: Bool
 , eventChan    :: Chan Event
 }
 
@@ -56,64 +57,66 @@ fetch :: State -> IO [Song.Song]
 fetch state@State {..} = do
   new <- case source of
     NetEaseFM -> liftSession state NetEase.fetchFM
+    NetEasePublicFM -> liftSession state NetEase.fetchFM
     NetEaseDailyRecommendation -> liftSession state NetEase.fetchRListAsFM
   if null new
      then error "unable to fetch new songs"
      else return new
 
-{- TODO: star / unstar / trash should be executed asynchronously. -}
 star :: State -> Song.Song -> IO Song.Song
 star state song = do
-  liftSession state (NetEase.star song)
+  forkIO $ liftSession state (NetEase.star song)
   return song { Song.starred = True }
 
 unstar :: State -> Song.Song -> IO Song.Song
 unstar state song = do
-  liftSession state (NetEase.unstar song)
+  forkIO $ liftSession state (NetEase.unstar song)
   return song { Song.starred = False }
 
 trash :: State -> Song.Song -> IO Song.Song
 trash state song = do
-  liftSession state (NetEase.trash song)
+  forkIO $ liftSession state (NetEase.trash song)
   return song { Song.starred = False }
 
 fetchLyrics :: State -> Song.Song -> IO Song.Lyrics
 fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
 
-fetchMore :: State -> IO ()
-fetchMore state@State {..} = do
-  this <- myThreadId
-  let finally e = case e of
-        Left e -> throwTo this e
-        Right _ -> return ()
-  let get = do
-        new <- fetch state
-        writeChan eventChan (NewSongArrival new)
-  void $ forkFinally get finally
-
-vpSize :: Int
-vpSize = 10
-
-vpName :: UI.Name
-vpName = "vp"
+fetchMore :: State -> IO State
+fetchMore state@State {..} 
+  | fetching = return state
+  | otherwise = do
+      this <- myThreadId
+      let finally e = case e of
+            Left e -> throwTo this e
+            Right _ -> return ()
+      let get = do
+            new <- fetch state
+            writeChan eventChan (NewSongArrival new)
+      forkFinally get finally
+      return state { fetching = True }
 
 playerMenuDraw :: State -> [UI.Widget]
 playerMenuDraw State {..} = [ui]
   where
     ui = UI.center player
-    player = UI.hLimit 60 $ UI.vLimit 10 $ UI.viewport vpName UI.Both $ UI.vBox $ do
-      let slices = toList $ S.take (vpSize * 2 + 2) $ S.drop (focusedIndex - vpSize) playSequence
+    vpSize = 15
+    player = UI.vLimit vpSize $ UI.viewport "vp" UI.Vertical $ UI.vBox $ do
       let format Song.Song {..} = title ++ " - " ++ intercalate " / " artists ++ " - " ++ album
-      let from = max 0 (focusedIndex - vpSize)
-      (song, index) <- zip slices [from .. ]
+      (song, index) <- zip (toList playSequence) [1 .. ]
       let mkItem | index == focusedIndex = UI.visible . UI.mkFocused
                  | otherwise = UI.mkUnfocused
-      return $ mkItem (show index ++ ". " ++ format song)
+      return $ UI.hCenter $ mkItem (show index ++ ". " ++ format song)
 
 playerMenuEvent :: State -> Event -> UI.EventM (UI.Next State)
-playerMenuEvent state event = case event of
-  NewSongArrival new -> UI.continue state { playSequence = playSequence state S.>< S.fromList new  }
+playerMenuEvent state@State {..} event = case event of
+  NewSongArrival new -> UI.continue state { playSequence = playSequence S.>< S.fromList new, fetching = False }
   VtyEvent (UI.EvKey UI.KEsc []) -> liftIO exitSuccess
+  VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 1 (focusedIndex - 1) } 
+  VtyEvent (UI.EvKey UI.KDown []) -> do
+    state' <- if focusedIndex == S.length playSequence
+                 then liftIO (fetchMore state)
+                 else return state
+    UI.continue state' { focusedIndex = min (focusedIndex + 1) (S.length playSequence) } 
   _ -> UI.continue state
 
 playerMenuApp :: UI.App State Event
@@ -129,15 +132,15 @@ playerMenu_cps :: MusicSource -> SomeSession -> IO ()
 playerMenu_cps source session = do
   fm <- initialState
   chan <- newChan
-  let state = State { source = source
-                    , playSequence = S.empty
-                    , currentIndex = 0
-                    , focusedIndex = 0
-                    , session = session
-                    , fmState = fm
-                    , eventChan = chan
-                    }
-  fetchMore state
+  state <- fetchMore State { source = source
+                           , playSequence = S.empty
+                           , currentIndex = 0
+                           , focusedIndex = 0
+                           , session = session
+                           , fetching = False
+                           , fmState = fm
+                           , eventChan = chan
+                           }
   void $ UI.customMain (UI.mkVty def) chan playerMenuApp state
 
 playerMenu :: MusicSource -> SomeSession -> Cont (IO ()) (IO ())

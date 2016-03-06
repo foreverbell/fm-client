@@ -39,7 +39,7 @@ sourceMenuDraw state = [ui]
     ui = UI.vCenter $ UI.vBox [ title, UI.str " ", menu ]
     title = UI.hCenter (UI.mkBanner "Select Source")
     menu = UI.hCenter $ UI.vBox $ do
-      ms <- [minBound, maxBound] :: [MusicSource]
+      ms <- [minBound .. maxBound] :: [MusicSource]
       let mkItem | source state == ms = UI.mkFocused
                  | otherwise = UI.mkUnfocused
       return $ mkItem (show ms)
