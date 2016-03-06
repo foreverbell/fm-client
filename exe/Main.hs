@@ -15,11 +15,14 @@ import qualified UI.Menu as UI
 delay :: MonadIO m => Int -> m ()
 delay seconds = liftIO $ threadDelay (seconds * 1000000)
 
+fetchLyricsIO session song = runSessionOnly session (fetchLyrics song)
+
 test :: IO ()
 test = void $ do
   session <- initSession True
+  state <- initialState
   [username, password] <- take 2 . lines <$> liftIO (readFile "passport")
-  runBoth session Nothing $ do
+  runBoth session state $ do
     login username password
     fm <- fetchFM
     liftIO $ mapM print fm

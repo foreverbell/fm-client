@@ -5,6 +5,7 @@ module FM.FM (
 , runStateOnly
 , runBoth
 , SessionOnly, StateOnly, Both
+, initialState
 , FMState (..)
 , MusicLocation
 , PlayerState (..)
@@ -40,12 +41,8 @@ initialState = do
 runSessionOnly :: (IsSession s) => s -> SessionOnly s a -> IO a
 runSessionOnly session (SessionOnly m) = runReaderT m session
 
-runStateOnly :: Maybe FMState -> StateOnly a -> IO (a, FMState)
-runStateOnly state (StateOnly m) = case state of
-  Just state -> runStateT m state
-  Nothing -> runStateT m =<< initialState
+runStateOnly :: FMState -> StateOnly a -> IO (a, FMState)
+runStateOnly state (StateOnly m) = runStateT m state
 
-runBoth :: (IsSession s) => s -> Maybe FMState -> Both s a -> IO (a, FMState)
-runBoth session state (Both m) = case state of
-  Just state -> runStateT (runReaderT m session) state
-  Nothing -> runStateT (runReaderT m session) =<< initialState
+runBoth :: (IsSession s) => s -> FMState -> Both s a -> IO (a, FMState)
+runBoth session state (Both m) = runStateT (runReaderT m session) state

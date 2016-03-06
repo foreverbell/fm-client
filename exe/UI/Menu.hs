@@ -1,9 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings #-}
 
-module UI.Menu ( 
-  sourceMenu
-, playerMenu
-) where
+module UI.Menu where
 
 import qualified Brick.Main as UI
 import qualified Brick.Types as UI
@@ -12,7 +9,10 @@ import qualified Brick.Widgets.Core as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Attributes as UI
 
+import           Control.Concurrent.Chan
+import           Control.Monad (void)
 import           Control.Monad.IO.Class (liftIO)
+import           Data.Default.Class
 import           System.Exit (exitSuccess)
 
 import           FM.FM
@@ -74,12 +74,15 @@ sourceMenu = UI.defaultMain sourceMenuApp minBound
 type SongList = ([Song.Song], [Song.Song])
  
 data State = State {
-  source :: MusicSource
-, playList :: SongList
+  source       :: MusicSource
+, playList     :: SongList
 , navigateList :: SongList
-, session :: SomeSession
-, fmState :: Maybe FMState
+, session      :: SomeSession
+, fmState      :: FMState
+, eventChan    :: Chan Event
 }
+
+data Event = VtyEvent UI.Event
 
 liftSession :: (IsSession s) => State -> SessionOnly s a -> IO a
 liftSession State {..} m = runSessionOnly (fromSession session) m
@@ -87,12 +90,54 @@ liftSession State {..} m = runSessionOnly (fromSession session) m
 liftState :: State -> StateOnly a -> IO (a, State)
 liftState state@State {..} m = do
   (r, s) <- runStateOnly fmState m
-  return $ (r, state { fmState = Just s })
+  return $ (r, state { fmState = s })
+
+liftState_ :: State -> StateOnly a -> IO State
+liftState_ state m = snd <$> liftState state m
+
+initSession :: MusicSource -> IO SomeSession
+initSession _ = SomeSession <$> NetEase.initSession True
 
 fetch :: State -> IO [Song.Song]
 fetch state@State {..} = case source of
   NetEaseFM -> liftSession state NetEase.fetchFM
   NetEaseDailyRecommendation -> liftSession state NetEase.fetchRListAsFM
 
+star :: State -> Song.Song -> IO Song.Song
+star state song = liftSession state (NetEase.star song)
+
+unstar :: State -> Song.Song -> IO Song.Song
+unstar state song = liftSession state (NetEase.unstar song)
+
+trash :: State -> Song.Song -> IO Song.Song
+trash state song = liftSession state (NetEase.trash song)
+
+fetchLyrics :: State -> Song.Song -> IO Song.Lyrics
+fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
+
+playerMenuDraw = undefined
+
+playerMenuEvent = undefined
+
+playerMenuApp :: UI.App State Event
+playerMenuApp = UI.App { UI.appDraw = playerMenuDraw
+                       , UI.appStartEvent = return
+                       , UI.appHandleEvent = playerMenuEvent
+                       , UI.appAttrMap = const $ UI.attributeMap
+                       , UI.appLiftVtyEvent = VtyEvent
+                       , UI.appChooseCursor = UI.neverShowCursor
+                       }
+
 playerMenu :: MusicSource -> IO ()
-playerMenu source = undefined
+playerMenu source = do
+  session <- initSession source
+  fm <- initialState
+  chan <- newChan
+  let state = State { source = source
+                    , playList = ([], [])
+                    , navigateList = ([], [])
+                    , session = session
+                    , fmState = fm
+                    , eventChan = chan
+                    }
+  void $ UI.customMain (UI.mkVty def) chan playerMenuApp state

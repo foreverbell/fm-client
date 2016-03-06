@@ -7,7 +7,7 @@ license-file:        LICENSE
 author:              foreverbell
 maintainer:          dql.foreverbell@gmail.com
 copyright:           2016 foreverbell
-category:            Music
+category:            Music, Web
 build-type:          Simple
 cabal-version:       >=1.10
 

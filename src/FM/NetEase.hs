@@ -6,8 +6,10 @@ module FM.NetEase (
 , login
 , fetchFM
 , fetchRListAsFM
-, star, unstar, trash
-, fetchLyricsIO
+, star
+, unstar
+, trash
+, fetchLyrics
 ) where
 
 import           Control.Exception
@@ -227,7 +229,8 @@ trash song@Song.Song {..} = do
   sendRequest session Get "http://music.163.com/api/radio/trash/add" (Trash uid)
   return song { Song.starred = False }
 
-fetchLyricsIO :: Session -> Song.Song -> IO Song.Lyrics
-fetchLyricsIO session Song.Song {..} = do
+fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
+fetchLyrics Song.Song {..} = do
+  session <- ask
   body <- sendRequest session Get "http://music.163.com/api/song/lyric" (FetchLyrics uid)
   return $ either (const def) id (decodeLyrics body)
