@@ -15,7 +15,7 @@ import qualified FM.Song as Song
 
 data PlayerState = Playing Song.Song 
                  | Paused Song.Song
-                 | Stop
+                 | Stopped
 
 data PlayerContext = PlayerContext {
   inHandle       :: Handle

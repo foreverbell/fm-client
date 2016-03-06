@@ -44,10 +44,10 @@ play song@Song.Song {..} fetchLyrics notify = do
         hPutStrLn inHandle $ "V " ++ show currentVolume
         hPutStrLn inHandle $ "L " ++ mp3URL
         loop (outHandle, fm) True =<< hGetLine outHandle
-  let cleanUp = \e -> do
+  let cleanUp e = do
         PlayerContext {..} <- readMVar playerContext
         terminateProcess processHandle
-        writeIORef playerState Stop
+        writeIORef playerState Stopped
         tryTakeMVar totalLength
         tryTakeMVar currentLocation
         tryTakeMVar currentLyrics
@@ -113,7 +113,7 @@ stop = do
   FMState {..} <- get
   state <- liftIO $ readIORef playerState
   case state of
-    Stop -> return ()
+    Stopped -> return ()
     _ -> do
       PlayerContext {..} <- liftIO $ readMVar playerContext
       liftIO $ killThread childThreadId

@@ -1,7 +1,6 @@
 module Main where
 
-import Control.Monad.IO.Class
-import Control.Monad (void)
+import Control.Monad.Cont
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar
 
@@ -9,8 +8,9 @@ import FM.FM
 import FM.NetEase
 import FM.Player
 
-import qualified UI.Login as UI
-import qualified UI.Menu as UI
+import qualified UI.Login as Login
+import qualified UI.Menu.Source as Menu
+import qualified UI.Menu.Player as Menu
 
 delay :: MonadIO m => Int -> m ()
 delay seconds = liftIO $ threadDelay (seconds * 1000000)
@@ -38,7 +38,9 @@ test = void $ do
     resume
     liftIO $ takeMVar signal
 
-main = do
-  UI.login
-  UI.playerMenu =<< UI.sourceMenu
-  test
+{- FIXME: Use Cont(CPS) is a workaround, since brick doesn't support stacking windows well. -}
+main :: IO ()
+main = flip runCont id $ do
+  source <- Menu.sourceMenu
+  passport <- Login.login source
+  Menu.playerMenu source passport

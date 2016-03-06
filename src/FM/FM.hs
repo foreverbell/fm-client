@@ -31,12 +31,12 @@ newtype Both s a = Both (ReaderT s (StateT FMState IO) a)
 initialState :: IO FMState
 initialState = do
   playerContext <- newEmptyMVar
-  playerState <- newIORef Stop
+  playerState <- newIORef Stopped
   totalLength <- newEmptyMVar
   currentLocation <- newEmptyMVar
   currentLyrics <- newEmptyMVar
   let currentVolume = 100
-  return $ FMState {..}
+  return FMState {..}
 
 runSessionOnly :: (IsSession s) => s -> SessionOnly s a -> IO a
 runSessionOnly session (SessionOnly m) = runReaderT m session

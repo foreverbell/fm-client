@@ -14,8 +14,15 @@ import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Attributes as UI
 
+import           UI.Types
+
+import           Control.Monad (void)
 import           Control.Monad.IO.Class (liftIO)
+import           Control.Monad.Cont (Cont, cont)
 import           System.Exit (exitSuccess)
+
+import qualified FM.NetEase as NetEase
+import           FM.FM (runSessionOnly)
 
 data EditorType = UserNameEditor | PasswordEditor
   deriving (Show)
@@ -24,6 +31,8 @@ data State = State {
   currentEditor  :: EditorType
 , userNameEditor :: UI.Editor
 , passwordEditor :: UI.Editor
+, musicSource    :: MusicSource
+, continuation   :: SomeSession -> IO ()
 }
 
 editorName :: EditorType -> UI.Name
@@ -54,7 +63,14 @@ loginDraw State {..} = [ui]
 loginEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
 loginEvent state event = case event of
   UI.EvKey UI.KEsc [] -> liftIO exitSuccess
-  UI.EvKey UI.KEnter [] -> UI.halt state
+  UI.EvKey UI.KEnter [] -> do
+    let [userName] = UI.getEditContents $ userNameEditor state
+    let [password] = UI.getEditContents $ passwordEditor state
+    session <- NetEase.initSession True
+    liftIO $ runSessionOnly session (NetEase.login userName password)
+    UI.suspendAndResume $ do
+      continuation state (SomeSession session)
+      exitSuccess
   UI.EvKey (UI.KChar '\t') [] -> UI.continue $ switchEditor state
   UI.EvKey UI.KBackTab [] -> UI.continue $ switchEditor state
   _ -> do
@@ -71,15 +87,20 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appChooseCursor = loginCursor
                   , UI.appHandleEvent = loginEvent
                   , UI.appStartEvent = return
-                  , UI.appAttrMap = const $ UI.attributeMap
+                  , UI.appAttrMap = const UI.attributeMap
                   , UI.appLiftVtyEvent = id
                   }
 
-login :: IO (String, String)
-login = do
+login_cps :: MusicSource -> (SomeSession -> IO ()) -> IO ()
+login_cps source cont = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
-  state <- UI.defaultMain loginApp $ State UserNameEditor editor1 editor2
-  let [userName] = UI.getEditContents $ userNameEditor state
-  let [password] = UI.getEditContents $ passwordEditor state
-  return (userName, password)
+  void $ UI.defaultMain loginApp State { currentEditor = UserNameEditor
+                                       , userNameEditor = editor1
+                                       , passwordEditor = editor2
+                                       , musicSource = source
+                                       , continuation = cont
+                                       }
+
+login :: MusicSource -> Cont (IO ()) SomeSession
+login source = cont (login_cps source)

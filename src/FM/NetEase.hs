@@ -146,14 +146,14 @@ createEncryptedLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m Encry
 createEncryptedLogin username password = createEncryptedText $ encodeJSON $ JSON.object 
   [ ("username", JSON.toJSON username)
   , ("password", JSON.toJSON password)
-  , ("rememberLogin", JSON.toJSON True)
+  , ("rememberLogin", JSON.toJSON False)
   ]
 
 createEncryptedPhoneLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m EncryptedData
 createEncryptedPhoneLogin phone password = createEncryptedText $ encodeJSON $ JSON.object 
   [ ("phone", JSON.toJSON phone)
   , ("password", JSON.toJSON password)
-  , ("rememberLogin", JSON.toJSON True)
+  , ("rememberLogin", JSON.toJSON False)
   ]
 
 data FMOperation = Star Song.SongId 
@@ -211,23 +211,20 @@ fetchRListAsFM = do
     Nothing -> return []
 
 -- | TODO: test star, unstar, trash
-star :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Song
-star song@Song.Song {..} = do
+star :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()
+star Song.Song {..} = do
   session <- ask
-  sendRequest session Get "http://music.163.com/api/radio/like" (Star uid)
-  return song { Song.starred = True }
+  void $ sendRequest session Get "http://music.163.com/api/radio/like" (Star uid)
 
-unstar :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Song
-unstar song@Song.Song {..} = do
+unstar :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()
+unstar Song.Song {..} = do
   session <- ask
-  sendRequest session Get "http://music.163.com/api/radio/like" (Unstar uid)
-  return song { Song.starred = False }
+  void $ sendRequest session Get "http://music.163.com/api/radio/like" (Unstar uid)
 
-trash :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Song
-trash song@Song.Song {..} = do
+trash :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()
+trash Song.Song {..} = do
   session <- ask
-  sendRequest session Get "http://music.163.com/api/radio/trash/add" (Trash uid)
-  return song { Song.starred = False }
+  void $ sendRequest session Get "http://music.163.com/api/radio/trash/add" (Trash uid)
 
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do

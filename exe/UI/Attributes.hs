@@ -5,6 +5,8 @@ module UI.Attributes (
 , mkBanner
 , mkFocused
 , mkUnfocused
+, mkState
+, mkProgressBar
 ) where
 
 import           Brick.AttrMap
@@ -31,9 +33,23 @@ unfocusedAttr = "unfocused"
 mkUnfocused :: String -> Widget
 mkUnfocused t = withAttr unfocusedAttr (str $ "   " ++ t)
 
+stateAttr :: AttrName
+stateAttr = "state"
+
+mkState :: String -> Widget
+mkState t = withAttr stateAttr (str t)
+
+progressBarAttr :: AttrName
+progressBarAttr = "progress"
+
+mkProgressBar :: String -> Widget
+mkProgressBar t = withAttr progressBarAttr (str t)
+
 attributeMap :: AttrMap
 attributeMap = attrMap def 
   [ (bannerAttr, V.defAttr `V.withForeColor` V.yellow)
   , (focusedAttr, V.defAttr `V.withForeColor` V.cyan)
   , (unfocusedAttr, V.defAttr `V.withForeColor` V.white)
+  , (stateAttr, V.defAttr `V.withForeColor` V.red)
+  , (progressBarAttr, V.defAttr `V.withForeColor` V.green)
   ]
