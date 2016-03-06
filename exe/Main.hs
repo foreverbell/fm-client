@@ -40,9 +40,7 @@ test = void $ do
 
 {- FIXME: Use Cont(CPS) is a workaround, since brick doesn't support stacking windows well. -}
 main :: IO ()
-main = do
-  putStr "\ESC[2J"
-  flip runCont id $ do
-    source <- Menu.sourceMenu
-    passport <- Login.login source
-    Menu.playerMenu source passport
+main = flip runCont id $ do
+  source <- Menu.sourceMenu
+  passport <- Login.login source
+  Menu.playerMenu source passport

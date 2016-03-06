@@ -35,12 +35,11 @@ data State = State {
 , focusedIndex :: Int
 , session      :: SomeSession
 , fmState      :: FMState
-, fetching     :: Bool
 , eventChan    :: Chan Event
 }
 
 data Event = VtyEvent UI.Event
-           | NewSongArrival [Song.Song]
+           | HelloWorld
 
 liftSession :: (IsSession s) => State -> SessionOnly s a -> IO a
 liftSession State {..} m = runSessionOnly (fromSession session) m
@@ -63,6 +62,14 @@ fetch state@State {..} = do
      then error "unable to fetch new songs"
      else return new
 
+fetchLyrics :: State -> Song.Song -> IO Song.Lyrics
+fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
+
+fetchMore :: State -> IO State
+fetchMore state@State {..} = do
+  new <- S.fromList <$> fetch state
+  return state { playSequence = playSequence S.>< new }
+
 star :: State -> Song.Song -> IO Song.Song
 star state song = do
   forkIO $ liftSession state (NetEase.star song)
@@ -78,23 +85,6 @@ trash state song = do
   forkIO $ liftSession state (NetEase.trash song)
   return song { Song.starred = False }
 
-fetchLyrics :: State -> Song.Song -> IO Song.Lyrics
-fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
-
-fetchMore :: State -> IO State
-fetchMore state@State {..} 
-  | fetching = return state
-  | otherwise = do
-      this <- myThreadId
-      let finally e = case e of
-            Left e -> throwTo this e
-            Right _ -> return ()
-      let get = do
-            new <- fetch state
-            writeChan eventChan (NewSongArrival new)
-      forkFinally get finally
-      return state { fetching = True }
-
 playerMenuDraw :: State -> [UI.Widget]
 playerMenuDraw State {..} = [ui]
   where
@@ -105,11 +95,11 @@ playerMenuDraw State {..} = [ui]
       (song, index) <- zip (toList playSequence) [1 .. ]
       let mkItem | index == focusedIndex = UI.visible . UI.mkFocused
                  | otherwise = UI.mkUnfocused
-      return $ UI.hCenter $ mkItem (show index ++ ". " ++ format song)
+      return $ mkItem (show index ++ ". " ++ format song)
 
 playerMenuEvent :: State -> Event -> UI.EventM (UI.Next State)
 playerMenuEvent state@State {..} event = case event of
-  NewSongArrival new -> UI.continue state { playSequence = playSequence S.>< S.fromList new, fetching = False }
+  HelloWorld -> UI.continue =<< liftIO (fetchMore state)
   VtyEvent (UI.EvKey UI.KEsc []) -> liftIO exitSuccess
   VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 1 (focusedIndex - 1) } 
   VtyEvent (UI.EvKey UI.KDown []) -> do
@@ -128,20 +118,20 @@ playerMenuApp = UI.App { UI.appDraw = playerMenuDraw
                        , UI.appChooseCursor = UI.neverShowCursor
                        }
 
-playerMenu_cps :: MusicSource -> SomeSession -> IO ()
-playerMenu_cps source session = do
+playerMenuCPS :: MusicSource -> SomeSession -> IO ()
+playerMenuCPS source session = do
   fm <- initialState
   chan <- newChan
-  state <- fetchMore State { source = source
-                           , playSequence = S.empty
-                           , currentIndex = 0
-                           , focusedIndex = 0
-                           , session = session
-                           , fetching = False
-                           , fmState = fm
-                           , eventChan = chan
-                           }
+  let state = State { source = source
+                    , playSequence = S.empty
+                    , currentIndex = 1
+                    , focusedIndex = 1
+                    , session = session
+                    , fmState = fm
+                    , eventChan = chan
+                    }
+  writeChan chan HelloWorld
   void $ UI.customMain (UI.mkVty def) chan playerMenuApp state
 
 playerMenu :: MusicSource -> SomeSession -> Cont (IO ()) (IO ())
-playerMenu source session = cont (const $ playerMenu_cps source session)
+playerMenu source session = cont (const $ playerMenuCPS source session)

@@ -47,9 +47,9 @@ mkProgressBar t = withAttr progressBarAttr (str t)
 
 attributeMap :: AttrMap
 attributeMap = attrMap def 
-  [ (bannerAttr, V.defAttr `V.withForeColor` V.yellow)
-  , (focusedAttr, V.defAttr `V.withForeColor` V.cyan)
-  , (unfocusedAttr, V.defAttr `V.withForeColor` V.white)
-  , (stateAttr, V.defAttr `V.withForeColor` V.red)
+  [ (bannerAttr,      V.defAttr `V.withForeColor` V.yellow)
+  , (focusedAttr,     V.defAttr `V.withForeColor` V.cyan)
+  , (unfocusedAttr,   V.defAttr `V.withForeColor` V.white)
+  , (stateAttr,       V.defAttr `V.withForeColor` V.red)
   , (progressBarAttr, V.defAttr `V.withForeColor` V.green)
   ]

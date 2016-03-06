@@ -13,6 +13,7 @@ import           Brick.Widgets.Core ((<+>))
 import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Attributes as UI
+import           UI.Black (black)
 
 import           UI.Types
 
@@ -93,9 +94,9 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appLiftVtyEvent = id
                   }
 
-login_cps :: MusicSource -> (SomeSession -> IO ()) -> IO ()
-login_cps NetEasePublicFM cont = cont =<< (SomeSession <$> NetEase.initSession True)
-login_cps source cont = do
+loginCPS :: MusicSource -> (SomeSession -> IO ()) -> IO ()
+loginCPS NetEasePublicFM cont = black (SomeSession <$> NetEase.initSession True) cont
+loginCPS source cont = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   void $ UI.defaultMain loginApp State { currentEditor = UserNameEditor
@@ -106,4 +107,4 @@ login_cps source cont = do
                                        }
 
 login :: MusicSource -> Cont (IO ()) SomeSession
-login source = cont (login_cps source)
+login source = cont (loginCPS source)

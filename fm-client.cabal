@@ -62,6 +62,7 @@ executable fm
                      , fm-client
   other-modules:
     UI.Attributes
+    UI.Black
     UI.Login
     UI.Menu.Player
     UI.Menu.Source

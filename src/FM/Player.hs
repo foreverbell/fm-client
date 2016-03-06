@@ -86,6 +86,7 @@ play song@Song.Song {..} fetchLyrics notify = do
         | "@P 0" `isPrefixOf` out = return ()
         | otherwise = loop ctx False =<< hGetLine h
 
+-- | pause, resume and stop are idempotent.
 pause :: (MonadIO m, MonadState FMState m) => m ()
 pause = do
   FMState {..} <- get

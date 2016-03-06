@@ -65,8 +65,8 @@ sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
                        , UI.appChooseCursor = UI.neverShowCursor
                        }
 
-sourceMenu_cps :: (MusicSource -> IO ()) -> IO ()
-sourceMenu_cps cont = void $ UI.defaultMain sourceMenuApp (State minBound cont)
+sourceMenuCPS :: (MusicSource -> IO ()) -> IO ()
+sourceMenuCPS cont = void $ UI.defaultMain sourceMenuApp (State minBound cont)
 
 sourceMenu :: Cont (IO ()) MusicSource
-sourceMenu = cont sourceMenu_cps
+sourceMenu = cont sourceMenuCPS
