@@ -72,15 +72,15 @@ decodeRList :: BS.ByteString -> Either String [Song.Song]
 decodeRList bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
   where unwrap (RList xs) = xs
 
-newtype Lyrics = Lyrics Song.Lyrics
+newtype Lyrics = Lyrics [String]
 
 instance JSON.FromJSON Lyrics where
   parseJSON (JSON.Object v) = v .: "lrc" >>= parse
     where
-      parse (JSON.Object v) = Lyrics . Song.Lyrics . lines . T.unpack <$> (v .: "lyric")
+      parse (JSON.Object v) = Lyrics . lines . T.unpack <$> (v .: "lyric")
       parse _ = mzero
   parseJSON _ = mzero
 
-decodeLyrics :: BS.ByteString -> Either String Song.Lyrics
+decodeLyrics :: BS.ByteString -> Either String [String]
 decodeLyrics bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
   where unwrap (Lyrics lyrics) = lyrics

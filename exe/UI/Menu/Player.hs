@@ -16,7 +16,6 @@ import           UI.Types
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Chan (Chan, writeChan, newChan)
 import           Control.Concurrent.STM.TVar
-import           Control.Concurrent.STM.TMVar
 import           Control.Monad (void, when)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Cont (Cont, cont)
@@ -33,12 +32,13 @@ import qualified FM.Player as Player
 import qualified FM.NetEase as NetEase
 
 data State = State {
-  source        :: MusicSource
+  session       :: SomeSession
+, player        :: Player
+, source        :: MusicSource
 , playSequence  :: S.Seq Song.Song
 , currentIndex  :: Int
 , focusedIndex  :: Int
-, session       :: SomeSession
-, fmState       :: FMState
+, volume        :: Int
 , eventChan     :: Chan Event
 , pendingMasked :: Bool
 }
@@ -46,18 +46,12 @@ data State = State {
 data Event = VtyEvent UI.Event
            | UserEventFetchMore
            | UserEventPending
-           | UserEventTimer
 
 liftSession :: (MonadIO m, IsSession s) => State -> SessionOnly s a -> m a
 liftSession State {..} m = liftIO $ runSessionOnly (fromSession session) m
 
-liftState :: (MonadIO m) => State -> StateOnly a -> m (a, State)
-liftState state@State {..} m = do
-  (r, s) <- liftIO $ runStateOnly fmState m
-  return (r, state { fmState = s })
-
-liftState_ :: (MonadIO m) => State -> StateOnly a -> m State
-liftState_ state m = snd <$> liftState state m
+liftPlayer :: (MonadIO m) => State -> PlayerOnly a -> m a
+liftPlayer state@State {..} m = liftIO $ runPlayerOnly player m
 
 fetch :: (MonadIO m) => State -> m [Song.Song]
 fetch state@State {..} = do
@@ -68,6 +62,9 @@ fetch state@State {..} = do
   if null new
      then error "unable to fetch new songs"
      else return new
+
+fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
+fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
 
 star :: (MonadIO m) => State -> Song.Song -> m Song.Song
 star state song = do
@@ -84,9 +81,6 @@ trash state song = do
   liftIO $ forkIO $ liftSession state (NetEase.trash song)
   return song { Song.starred = False }
 
-fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
-fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
-
 fetchMore :: (MonadIO m) => State -> m State
 fetchMore state@State {..} = do
   new <- S.fromList <$> fetch state
@@ -94,24 +88,37 @@ fetchMore state@State {..} = do
 
 play :: (MonadIO m) => State -> m State
 play state@State {..} = do
-  let onComplete e = when e (writeChan eventChan UserEventPending)
-  state@State {..} <- liftState_ state $ Player.play (playSequence `S.index` (currentIndex - 1)) (fetchLyrics state) onComplete
+  let onTerminate e = when e (writeChan eventChan UserEventPending)
+  let onUpdate = const $ return ()
+  liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onUpdate
   return state { focusedIndex = currentIndex, pendingMasked = False }
 
 pause :: (MonadIO m) => State -> m State
 pause state = do
-  state <- liftState_ state Player.pause
+  liftPlayer state Player.pause
   return state { pendingMasked = True }
 
 resume :: (MonadIO m) => State -> m State
 resume state = do
-  state <- liftState_ state Player.resume
+  liftPlayer state Player.resume
   return state { pendingMasked = False }
 
 stop :: (MonadIO m) => State -> m State
 stop state = do
-  state <- liftState_ state Player.stop
+  liftPlayer state Player.stop
   return state { pendingMasked = True }
+
+increaseVolume :: (MonadIO m) => State -> Int -> m State
+increaseVolume state@State {..} d = do
+  let vol = min 0 (volume + d)
+  liftPlayer state (Player.setVolume vol)
+  return state { volume = vol }
+
+decreaseVolume :: (MonadIO m) => State -> Int -> m State
+decreaseVolume state@State {..} d = do
+  let vol = max 0 (volume - d)
+  liftPlayer state (Player.setVolume vol)
+  return state { volume = vol }
 
 vpSize :: Int
 vpSize = 15
@@ -132,8 +139,8 @@ playerMenuEvent state@State {..} event = case event of
   UserEventFetchMore -> UI.continue =<< fetchMore state
 
   UserEventPending -> do
-    player <- liftIO $ atomically $ readTVar (playerState fmState)
-    if pendingMasked && isPlaying player
+    pstate <- liftIO $ atomically $ readTVar (playerState player)
+    if pendingMasked && isPlaying pstate
       then UI.continue state
       else do
         state@State {..} <- if currentIndex == S.length playSequence
@@ -142,14 +149,14 @@ playerMenuEvent state@State {..} event = case event of
         UI.continue =<< play state { currentIndex = currentIndex + 1 }
 
   VtyEvent (UI.EvKey UI.KEsc []) -> do
-    player <- liftIO $ atomically $ readTVar (playerState fmState)
-    if isStopped player
+    pstate <- liftIO $ atomically $ readTVar (playerState player)
+    if isStopped pstate
        then liftIO exitSuccess
        else UI.continue =<< stop state
 
   VtyEvent (UI.EvKey (UI.KChar ' ') []) -> do
-    player <- liftIO $ atomically $ readTVar (playerState fmState)
-    UI.continue =<< case player of
+    pstate <- liftIO $ atomically $ readTVar (playerState player)
+    UI.continue =<< case pstate of
       Playing _ -> do
         if currentIndex == focusedIndex
            then pause state
@@ -176,13 +183,13 @@ playerMenuEvent state@State {..} event = case event of
                           else return state
     UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) } 
 
-  VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< liftState_ state (Player.decreaseVolume 10)
+  VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< decreaseVolume state 10
 
-  VtyEvent (UI.EvKey (UI.KChar '=') []) -> UI.continue =<< liftState_ state (Player.increaseVolume 10)
+  VtyEvent (UI.EvKey (UI.KChar '=') []) -> UI.continue =<< increaseVolume state 10
 
-  VtyEvent (UI.EvKey (UI.KChar '_') []) -> UI.continue =<< liftState_ state (Player.decreaseVolume 20)
+  VtyEvent (UI.EvKey (UI.KChar '_') []) -> UI.continue =<< decreaseVolume state 20
 
-  VtyEvent (UI.EvKey (UI.KChar '+') []) -> UI.continue =<< liftState_ state (Player.increaseVolume 20)
+  VtyEvent (UI.EvKey (UI.KChar '+') []) -> UI.continue =<< increaseVolume state 20
 
   _ -> UI.continue state
 
@@ -197,14 +204,15 @@ playerMenuApp = UI.App { UI.appDraw = playerMenuDraw
 
 playerMenuCPS :: MusicSource -> SomeSession -> IO ()
 playerMenuCPS source session = do
-  fm <- initialState
+  player <- initialPlayer
   chan <- newChan
-  let state = State { source = source
+  let state = State { session = session
+                    , player = player
+                    , source = source
                     , playSequence = S.empty
                     , currentIndex = 1
                     , focusedIndex = 1
-                    , session = session
-                    , fmState = fm
+                    , volume = 100
                     , eventChan = chan
                     , pendingMasked = True
                     }

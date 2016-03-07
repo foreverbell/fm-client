@@ -22,7 +22,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
 import           Data.Char (isDigit)
-import           Data.Default.Class (def)
+import           Data.Default.Class
 import           Data.IORef
 import           Data.List (find)
 import           Data.Time.Clock (getCurrentTime)
@@ -230,4 +230,4 @@ fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/song/lyric" (FetchLyrics uid)
-  return $ either (const def) id (decodeLyrics body)
+  return $ either (const def) Song.parseLyrics (decodeLyrics body)

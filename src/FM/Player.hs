@@ -1,36 +1,67 @@
 {-# LANGUAGE RecordWildCards, FlexibleContexts #-}
 
 module FM.Player ( 
-  play
+  PlayerState (..)
+, isPlaying, isPaused, isStopped
+, Player (..)
+, play
 , pause
 , resume
 , stop
 , setVolume
-, increaseVolume, decreaseVolume
 ) where
 
-import Control.Monad.IO.Class
-import Control.Monad.Reader
-import Control.Monad.State
-import Control.Concurrent (forkFinally, killThread, myThreadId, throwTo)
-import Control.Concurrent.STM.TMVar
-import Control.Concurrent.STM.TVar
-import Control.Exception (asyncExceptionFromException, AsyncException (..))
-import Control.Monad.STM (atomically)
-import Data.List (isPrefixOf)
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader
+import           Control.Concurrent (ThreadId, forkFinally, killThread, myThreadId, throwTo)
+import           Control.Concurrent.STM.TMVar
+import           Control.Concurrent.STM.TVar
 
-import System.IO
-import System.Process (runInteractiveProcess, terminateProcess)
+import           Control.Exception (asyncExceptionFromException, AsyncException (..))
+import           Control.Monad.STM (atomically)
+import           Data.List (isPrefixOf)
+
+import           System.IO
+import           System.Process (ProcessHandle, runInteractiveProcess, terminateProcess)
 
 import qualified FM.Song as Song
-import           FM.FMState
+
+data PlayerState = Playing Song.Song 
+                 | Paused Song.Song
+                 | Stopped
+
+isPlaying :: PlayerState -> Bool
+isPlaying (Playing _) = True
+isPlaying _ = False
+
+isPaused :: PlayerState -> Bool
+isPaused (Paused _) = True
+isPaused _ = False
+
+isStopped :: PlayerState -> Bool
+isStopped Stopped = True
+isStopped _ = False
+
+data PlayerContext = PlayerContext {
+  inHandle       :: Handle
+, outHandle      :: Handle
+, processHandle  :: ProcessHandle
+, parentThreadId :: ThreadId
+, childThreadId  :: ThreadId
+}
+
+data Player = Player {
+  playerContext :: TMVar PlayerContext
+, playerState   :: TVar PlayerState
+, currentLyrics :: TMVar Song.Lyrics
+}
 
 type FetchLyrics = Song.Song -> IO Song.Lyrics
-type NotifyDone = Bool -> IO ()
+type Notify a = a -> IO ()
 
-play :: (MonadIO m, MonadState FMState m) => Song.Song -> FetchLyrics -> NotifyDone -> m ()
-play song@Song.Song {..} fetchLyrics notify = do
-  fm@FMState {..} <- get
+play :: (MonadIO m, MonadReader Player m) => Song.Song -> Int -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> m ()
+play song@Song.Song {..} volume fetchLyrics onTerminate onUpdate = do
+  Player {..} <- ask
   (inHandle, outHandle, _, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
         hSetBinaryMode h False
@@ -40,25 +71,21 @@ play song@Song.Song {..} fetchLyrics notify = do
   exitLock <- liftIO $ atomically $ newTMVar ()
   let playerThread = do
         atomically $ putTMVar exitLock ()
-        {- TODO: fetch lyrics asynchronously. -}
-        lyrics <- fetchLyrics song
-        atomically $ putTMVar currentLyrics lyrics
-        hPutStrLn inHandle $ "V " ++ show currentVolume
+        atomically . putTMVar currentLyrics =<< fetchLyrics song
+        hPutStrLn inHandle $ "V " ++ show volume
         hPutStrLn inHandle $ "L " ++ url
-        loop (outHandle, fm) True =<< hGetLine outHandle
+        loop (outHandle, 0, 0) True =<< hGetLine outHandle
   let cleanUp e = do
         PlayerContext {..} <- atomically $ readTMVar playerContext
         terminateProcess processHandle
         atomically $ do
           writeTVar playerState Stopped
-          tryTakeTMVar totalLength
-          tryTakeTMVar currentLocation
           tryTakeTMVar currentLyrics
           takeTMVar playerContext
         case e of
-          Right _ -> notify True
+          Right _ -> onTerminate True
           Left e -> case asyncExceptionFromException e of
-                      Just ThreadKilled -> notify False
+                      Just ThreadKilled -> onTerminate False
                       _ -> throwTo parentThreadId e
   parentThreadId <- liftIO myThreadId
   childThreadId <- liftIO $ forkFinally playerThread cleanUp
@@ -67,34 +94,28 @@ play song@Song.Song {..} fetchLyrics notify = do
     writeTVar playerState (Playing song)
     takeTMVar exitLock
     where
-      loop :: (Handle, FMState) -> Bool -> String -> IO ()
+      loop :: (Handle, Double, Double) -> Bool -> String -> IO ()
 
-      loop ctx@(h, FMState {..}) True out@('@':'F':_) = do
-        let ws = words out
-        let tracks = read (ws !! 2) :: Int
-        let length = read (ws !! 4) :: Double
-        atomically $ do
-          putTMVar totalLength (tracks, length)
-          putTMVar currentLocation (0, 0)
-        loop ctx False =<< hGetLine h
-      
-      loop ctx@(h, FMState {..}) True _ = loop ctx True =<< hGetLine h
-      
-      loop ctx@(h, FMState {..}) False out@('@':'F':_) = do
-        let ws = words out
-        let curTrack = read (ws !! 1) :: Int
-        let curLocation = read (ws !! 3) :: Double
-        atomically $ swapTMVar currentLocation (curTrack, curLocation)
-        loop ctx False =<< hGetLine h
+      loop (h, _, _) True out@('@':'F':_) = do
+        let l = read (words out !! 4)
+        onUpdate (l, 0)
+        loop (h, l, 0) False =<< hGetLine h
 
-      loop ctx@(h, _) False out 
-        | "@P 0" `isPrefixOf` out = return ()
+      loop ctx@(h, _, _) True _ = loop ctx True =<< hGetLine h
+      
+      loop (h, l, c) False out@('@':'F':_) = do
+        let c' = read (words out !! 3)
+        when (floor c' /= floor c) $ onUpdate (l, c')
+        loop (h, l, c') False =<< hGetLine h
+
+      loop ctx@(h, l, c) False out 
+        | "@P 0" `isPrefixOf` out = onUpdate (l, c)
         | otherwise = loop ctx False =<< hGetLine h
 
 -- | pause, resume and stop are idempotent.
-pause :: (MonadIO m, MonadState FMState m) => m ()
+pause :: (MonadIO m, MonadReader Player m) => m ()
 pause = do
-  FMState {..} <- get
+  Player {..} <- ask
   state <- liftIO $ atomically $ readTVar playerState
   case state of
     Playing s -> liftIO $ do
@@ -103,9 +124,9 @@ pause = do
       hPutStrLn inHandle "P"
     _ -> return ()
 
-resume :: (MonadIO m, MonadState FMState m) => m ()
+resume :: (MonadIO m, MonadReader Player m) => m ()
 resume = do
-  FMState {..} <- get
+  Player {..} <- ask
   state <- liftIO $ atomically $ readTVar playerState
   case state of
     Paused s -> liftIO $ do
@@ -114,9 +135,9 @@ resume = do
       hPutStrLn inHandle "P"
     _ -> return ()
 
-stop :: (MonadIO m, MonadState FMState m) => m ()
+stop :: (MonadIO m, MonadReader Player m) => m ()
 stop = do
-  FMState {..} <- get
+  Player {..} <- ask
   state <- liftIO $ atomically $ readTVar playerState
   case state of
     Stopped -> return ()
@@ -124,18 +145,11 @@ stop = do
       PlayerContext {..} <- atomically $ readTMVar playerContext
       killThread childThreadId
 
-setVolume :: (MonadIO m, MonadState FMState m) => Int -> m ()
+setVolume :: (MonadIO m, MonadReader Player m) => Int -> m ()
 setVolume vol = do
-  let vol' | vol < 0 = 0
-           | vol > 100 = 100
-           | otherwise = vol
-  FMState {..} <- get
+  let newVol | vol < 0 = 0
+             | vol > 100 = 100
+             | otherwise = vol
+  Player {..} <- ask
   h <- fmap inHandle <$> liftIO (atomically $ tryReadTMVar playerContext)
-  maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show vol')) h
-  modify $ \fm -> fm { currentVolume = vol' }
-
-increaseVolume :: (MonadIO m, MonadState FMState m) => Int -> m ()
-increaseVolume d = setVolume . (\x -> x + d) =<< gets currentVolume
- 
-decreaseVolume :: (MonadIO m, MonadState FMState m) => Int -> m ()
-decreaseVolume d = setVolume . (\x -> x - d) =<< gets currentVolume
+  maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show newVol)) h

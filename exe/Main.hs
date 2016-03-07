@@ -15,28 +15,29 @@ import qualified UI.Menu.Player as Menu
 delay :: MonadIO m => Int -> m ()
 delay seconds = liftIO $ threadDelay (seconds * 1000000)
 
-fetchLyricsIO session song = runSessionOnly session (fetchLyrics song)
-
 test :: IO ()
 test = void $ do
   session <- initSession True
-  state <- initialState
+  player <- initialPlayer
   [username, password] <- take 2 . lines <$> liftIO (readFile "passport")
-  runBoth session state $ do
+  fm <- runSessionOnly session $ do
     login username password
-    fm <- fetchFM
-    liftIO $ mapM print fm
-    lyrics <- liftIO $ fetchLyricsIO session (fm !! 0)
-    liftIO $ print lyrics
-    signal <- liftIO $ newEmptyMVar
-    play (fm !! 0) (fetchLyricsIO session) $ \b -> do
-      putStrLn $ if b then "normally exit" else "user interrupt"
-      putMVar signal ()
-    delay 5
+    fetchFM
+  mapM print fm
+  lyrics <- runSessionOnly session $ fetchLyrics (fm !! 0)
+  print lyrics
+  signal <- newEmptyMVar
+  let onTerminate b = do
+        putStrLn $ if b then "normally exit" else "user interrupt"
+        putMVar signal ()
+  let onUpdate x = putStrLn $ show x
+  runPlayerOnly player $ do
+    play (fm !! 0) 100 (runSessionOnly session . fetchLyrics) onTerminate onUpdate
+    liftIO $ delay 5
     pause
-    delay 1
+    liftIO $ delay 1
     resume
-    liftIO $ takeMVar signal
+  takeMVar signal
 
 {- FIXME: Use Cont(CPS) is a workaround, since brick doesn't support stacking windows well. -}
 main :: IO ()

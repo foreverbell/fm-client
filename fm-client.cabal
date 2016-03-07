@@ -31,6 +31,7 @@ library
                      , vector
                      , bytestring
                      , text
+                     , parsec
                      , http-client
                      , http-client-tls
                      , http-types
@@ -44,7 +45,6 @@ library
     FM.Session
     FM.Song
   other-modules:
-    FM.FMState
     FM.NetEase.Crypto
     FM.NetEase.JSON
 
