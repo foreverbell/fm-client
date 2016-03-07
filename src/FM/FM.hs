@@ -11,10 +11,10 @@ module FM.FM (
 , PlayerState (..)
 ) where
 
-import Control.Concurrent.MVar (newEmptyMVar)
+import Control.Concurrent.STM.TMVar (newEmptyTMVarIO)
+import Control.Concurrent.STM.TVar (newTVarIO)
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.IORef (newIORef)
 
 import FM.FMState
 import FM.Session
@@ -30,11 +30,11 @@ newtype Both s a = Both (ReaderT s (StateT FMState IO) a)
 
 initialState :: IO FMState
 initialState = do
-  playerContext <- newEmptyMVar
-  playerState <- newIORef Stopped
-  totalLength <- newEmptyMVar
-  currentLocation <- newEmptyMVar
-  currentLyrics <- newEmptyMVar
+  playerContext <- newEmptyTMVarIO
+  playerState <- newTVarIO Stopped
+  totalLength <- newEmptyTMVarIO
+  currentLocation <- newEmptyTMVarIO
+  currentLyrics <- newEmptyTMVarIO
   let currentVolume = 100
   return FMState {..}
 

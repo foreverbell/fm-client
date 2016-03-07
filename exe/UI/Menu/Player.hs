@@ -13,7 +13,7 @@ import qualified UI.Attributes as UI
 
 import           UI.Types
 
-import           Control.Concurrent (throwTo, myThreadId, forkIO, forkFinally)
+import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Chan (Chan, writeChan, newChan)
 import           Control.Monad (void)
 import           Control.Monad.IO.Class (liftIO)

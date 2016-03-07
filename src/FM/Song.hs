@@ -16,7 +16,7 @@ data Song = Song {
 , title :: String
 , artists :: [String]
 , album :: String
-, mp3URL :: String
+, url :: String
 , starred :: Bool
 }
 
@@ -31,7 +31,7 @@ instance Show Song where
                            , "  title = " ++ title ++ ","
                            , "  artists = " ++ dumpList artists ++ ","
                            , "  album = " ++ album ++ ","
-                           , "  mp3URL = " ++ mp3URL ++ ","
+                           , "  url = " ++ url ++ ","
                            , "  starred = " ++ show starred
                            , "}"
                            ]

@@ -24,6 +24,7 @@ library
                      , time
                      , exceptions
                      , process
+                     , stm
                      , data-default-class
                      , mtl
                      , transformers

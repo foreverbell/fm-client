@@ -45,7 +45,7 @@ parseSongList _ = mzero
 parseSong :: JSON.Value -> JSON.Parser Song.Song
 parseSong (JSON.Object v) = do
   starred <- v .: "starred"
-  mp3URL <- v .: "mp3Url"
+  url <- v .: "mp3Url"
   title <- v .: "name"
   uid <- v .: "id"
   artists <- parseArtists =<< (v .: "artists")

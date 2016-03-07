@@ -6,8 +6,8 @@ module FM.FMState (
 ) where
 
 import Control.Concurrent (ThreadId)
-import Control.Concurrent.MVar (MVar)
-import Data.IORef (IORef)
+import Control.Concurrent.STM.TMVar (TMVar)
+import Control.Concurrent.STM.TVar (TVar)
 import System.Process (ProcessHandle)
 import System.IO (Handle)
 
@@ -28,10 +28,10 @@ data PlayerContext = PlayerContext {
 type MusicLocation = (Int, Double)
 
 data FMState = FMState {
-  playerContext   :: MVar PlayerContext
-, playerState     :: IORef PlayerState
-, totalLength     :: MVar MusicLocation
-, currentLocation :: MVar MusicLocation
-, currentLyrics   :: MVar Song.Lyrics
+  playerContext   :: TMVar PlayerContext
+, playerState     :: TVar PlayerState
+, totalLength     :: TMVar MusicLocation
+, currentLocation :: TMVar MusicLocation
+, currentLyrics   :: TMVar Song.Lyrics
 , currentVolume   :: Int
 }
