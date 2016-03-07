@@ -134,8 +134,8 @@ setVolume vol = do
   maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show vol')) h
   modify $ \fm -> fm { currentVolume = vol' }
 
-increaseVolume :: (MonadIO m, MonadState FMState m) => m ()
-increaseVolume = setVolume . (\x -> x + 5) =<< gets currentVolume
+increaseVolume :: (MonadIO m, MonadState FMState m) => Int -> m ()
+increaseVolume d = setVolume . (\x -> x + d) =<< gets currentVolume
  
-decreaseVolume :: (MonadIO m, MonadState FMState m) => m ()
-decreaseVolume = setVolume . (\x -> x - 5) =<< gets currentVolume
+decreaseVolume :: (MonadIO m, MonadState FMState m) => Int -> m ()
+decreaseVolume d = setVolume . (\x -> x - d) =<< gets currentVolume

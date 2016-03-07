@@ -69,14 +69,6 @@ fetch state@State {..} = do
      then error "unable to fetch new songs"
      else return new
 
-fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
-fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
-
-fetchMore :: (MonadIO m) => State -> m State
-fetchMore state@State {..} = do
-  new <- S.fromList <$> fetch state
-  return state { playSequence = playSequence S.>< new }
-
 star :: (MonadIO m) => State -> Song.Song -> m Song.Song
 star state song = do
   liftIO $ forkIO $ liftSession state (NetEase.star song)
@@ -91,6 +83,14 @@ trash :: (MonadIO m) => State -> Song.Song -> m Song.Song
 trash state song = do
   liftIO $ forkIO $ liftSession state (NetEase.trash song)
   return song { Song.starred = False }
+
+fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
+fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
+
+fetchMore :: (MonadIO m) => State -> m State
+fetchMore state@State {..} = do
+  new <- S.fromList <$> fetch state
+  return state { playSequence = playSequence S.>< new }
 
 play :: (MonadIO m) => State -> m State
 play state@State {..} = do
@@ -175,6 +175,14 @@ playerMenuEvent state@State {..} event = case event of
                           then liftIO (fetchMore state)
                           else return state
     UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) } 
+
+  VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< liftState_ state (Player.decreaseVolume 10)
+
+  VtyEvent (UI.EvKey (UI.KChar '=') []) -> UI.continue =<< liftState_ state (Player.increaseVolume 10)
+
+  VtyEvent (UI.EvKey (UI.KChar '_') []) -> UI.continue =<< liftState_ state (Player.decreaseVolume 20)
+
+  VtyEvent (UI.EvKey (UI.KChar '+') []) -> UI.continue =<< liftState_ state (Player.increaseVolume 20)
 
   _ -> UI.continue state
 
