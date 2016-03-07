@@ -16,11 +16,11 @@ import           Control.Monad.IO.Class (liftIO)
 import           Data.Default.Class
 import           System.Exit (exitSuccess)
 
-data Event = VtyEvent UI.Event | HelloWorld
+data Event = Event UI.Event | Ohayou
 type State a = (IO a, a -> IO ())
 
 blackEvent :: State a -> Event -> UI.EventM (UI.Next (State a))
-blackEvent (m, f) HelloWorld = do
+blackEvent (m, f) Ohayou = do
   m' <- liftIO $ m
   UI.suspendAndResume $ f m' >> exitSuccess
 blackEvent state _ = UI.continue state
@@ -30,12 +30,12 @@ blackApp = UI.App { UI.appDraw = const [UI.str []]
                   , UI.appStartEvent = return
                   , UI.appHandleEvent = blackEvent
                   , UI.appAttrMap = const UI.attributeMap
-                  , UI.appLiftVtyEvent = VtyEvent
+                  , UI.appLiftVtyEvent = Event
                   , UI.appChooseCursor = UI.neverShowCursor
                   }
 
 black :: IO a -> (a -> IO ()) -> IO ()
 black m f = do
   chan <- newChan
-  writeChan chan HelloWorld
+  writeChan chan Ohayou
   void $ UI.customMain (UI.mkVty def) chan blackApp (m, f)

@@ -3,6 +3,7 @@ module FM.FMState (
 , MusicLocation
 , PlayerContext (..)
 , PlayerState (..)
+, isPlaying, isPaused, isStopped
 ) where
 
 import Control.Concurrent (ThreadId)
@@ -16,6 +17,18 @@ import qualified FM.Song as Song
 data PlayerState = Playing Song.Song 
                  | Paused Song.Song
                  | Stopped
+
+isPlaying :: PlayerState -> Bool
+isPlaying (Playing _) = True
+isPlaying _ = False
+
+isPaused :: PlayerState -> Bool
+isPaused (Paused _) = True
+isPaused _ = False
+
+isStopped :: PlayerState -> Bool
+isStopped Stopped = True
+isStopped _ = False
 
 data PlayerContext = PlayerContext {
   inHandle       :: Handle

@@ -9,6 +9,7 @@ module FM.FM (
 , FMState (..)
 , MusicLocation
 , PlayerState (..)
+, isPlaying, isPaused, isStopped
 ) where
 
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO)
