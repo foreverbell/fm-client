@@ -110,7 +110,7 @@ stop state = do
 
 increaseVolume :: (MonadIO m) => State -> Int -> m State
 increaseVolume state@State {..} d = do
-  let vol = min 0 (volume + d)
+  let vol = min 100 (volume + d)
   liftPlayer state (Player.setVolume vol)
   return state { volume = vol }
 

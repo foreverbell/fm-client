@@ -146,10 +146,7 @@ stop = do
       killThread childThreadId
 
 setVolume :: (MonadIO m, MonadReader Player m) => Int -> m ()
-setVolume vol = do
-  let newVol | vol < 0 = 0
-             | vol > 100 = 100
-             | otherwise = vol
+setVolume volume = do
   Player {..} <- ask
   h <- fmap inHandle <$> liftIO (atomically $ tryReadTMVar playerContext)
-  maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show newVol)) h
+  maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show volume)) h
