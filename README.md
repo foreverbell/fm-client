@@ -1,5 +1,9 @@
 # fm-client
 
-Under development. 
+Inspired by [musicbox](https://github.com/darknessomi/musicbox).
 
-The backend is nearly complete, and I am working on the frontend.
+The main reason for rebuilding the wheel is that I need a purer FM.
+
+## Short keys
+
+TODO.
