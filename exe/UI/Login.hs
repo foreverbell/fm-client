@@ -12,7 +12,7 @@ import qualified Brick.Widgets.Core as UI
 import           Brick.Widgets.Core ((<+>))
 import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
-import qualified UI.Attributes as UI
+import qualified UI.Extra as UI
 import           UI.Black (black)
 
 import           UI.Types
@@ -54,11 +54,11 @@ switchEditor state@State {..} = state { currentEditor = newEditor }
 loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
-    ui = UI.vCenter $ UI.vBox $ map UI.hCenter 
-           [ UI.mkBanner "NetEase Login"
-           , UI.str " "
-           , UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
-           , UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
+    ui = UI.vCenter $ UI.vBox 
+           [ UI.mkYellow $ UI.hCenter $ UI.str "NetEase Login"
+           , UI.separator
+           , UI.hCenter $ UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
+           , UI.hCenter $ UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
            ]
 
 loginEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
@@ -90,7 +90,7 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appChooseCursor = loginCursor
                   , UI.appHandleEvent = loginEvent
                   , UI.appStartEvent = return
-                  , UI.appAttrMap = const UI.attributeMap
+                  , UI.appAttrMap = const UI.defaultAttributeMap
                   , UI.appLiftVtyEvent = id
                   }
 

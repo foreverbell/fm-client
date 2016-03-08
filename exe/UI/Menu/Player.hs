@@ -9,7 +9,7 @@ import qualified Brick.Types as UI
 import qualified Brick.Widgets.Center as UI
 import qualified Brick.Widgets.Core as UI
 import qualified Graphics.Vty as UI
-import qualified UI.Attributes as UI
+import qualified UI.Extra as UI
 
 import           UI.Types
 
@@ -24,6 +24,7 @@ import           Data.Default.Class
 import           Data.Foldable (toList)
 import           Data.List (intercalate)
 import qualified Data.Sequence as S
+import           Text.Printf (printf)
 import           System.Exit (exitSuccess)
 
 import           FM.FM
@@ -36,9 +37,12 @@ data State = State {
 , player        :: Player
 , source        :: MusicSource
 , playSequence  :: S.Seq Song.Song
+, onStopped     :: Bool
 , currentIndex  :: Int
 , focusedIndex  :: Int
 , volume        :: Int
+, progress      :: (Double, Double)
+, lyrics        :: String 
 , eventChan     :: Chan Event
 , pendingMasked :: Bool
 }
@@ -46,12 +50,14 @@ data State = State {
 data Event = VtyEvent UI.Event
            | UserEventFetchMore
            | UserEventPending
+           | UserEventUpdateProgress (Double, Double)
+           | UserEventUpdateLyrics String
 
 liftSession :: (MonadIO m, IsSession s) => State -> SessionOnly s a -> m a
 liftSession State {..} m = liftIO $ runSessionOnly (fromSession session) m
 
 liftPlayer :: (MonadIO m) => State -> PlayerOnly a -> m a
-liftPlayer state@State {..} m = liftIO $ runPlayerOnly player m
+liftPlayer State {..} m = liftIO $ runPlayerOnly player m
 
 fetch :: (MonadIO m) => State -> m [Song.Song]
 fetch state@State {..} = do
@@ -89,10 +95,14 @@ fetchMore state@State {..} = do
 play :: (MonadIO m) => State -> m State
 play state@State {..} = do
   let onTerminate e = when e (writeChan eventChan UserEventPending)
-  let onUpdate _ = return ()
-  let onLyrics _ = return ()
-  liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onUpdate onLyrics
-  return state { focusedIndex = currentIndex, pendingMasked = False }
+  let onProgress p = writeChan eventChan (UserEventUpdateProgress p)
+  let onLyrics l = writeChan eventChan (UserEventUpdateLyrics l)
+  liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onProgress onLyrics
+  return state { focusedIndex = currentIndex
+               , onStopped = False
+               , progress = (0, 0)
+               , lyrics = [] 
+               , pendingMasked = False }
 
 pause :: (MonadIO m) => State -> m State
 pause state = do
@@ -107,7 +117,10 @@ resume state = do
 stop :: (MonadIO m) => State -> m State
 stop state = do
   liftPlayer state Player.stop
-  return state { pendingMasked = True }
+  return state { onStopped = True
+               , progress = (0, 0)
+               , lyrics = []
+               , pendingMasked = True }
 
 increaseVolume :: (MonadIO m) => State -> Int -> m State
 increaseVolume state@State {..} d = do
@@ -127,13 +140,26 @@ vpSize = 15
 playerMenuDraw :: State -> [UI.Widget]
 playerMenuDraw State {..} = [ui]
   where
-    ui = UI.center player
-    player = UI.vLimit vpSize $ UI.viewport "vp" UI.Vertical $ UI.vBox $ do
-      let format Song.Song {..} = title ++ " - " ++ intercalate " / " artists ++ " - " ++ album
+    formatSong Song.Song {..} = printf "%s - %s - %s" title (intercalate " / " artists) album :: String
+    formatTime time = printf "%02d:%02d" minute second :: String
+      where (minute, second) = floor time `quotRem` 60 :: (Int, Int)
+    ui = UI.vBox [banner, progressBar, UI.separator, lyricsBar, UI.separator, player]
+    banner | onStopped = UI.mkYellow $ UI.hCenter $ UI.str $ "[Stopped]"
+           | otherwise = UI.mkYellow $ UI.hCenter $ UI.str $ formatSong $ playSequence `S.index` (currentIndex - 1)
+    progressBar | onStopped = UI.separator
+                | otherwise = UI.mkRed $ UI.hCenter $ UI.str $ 
+                    printf "[%s%s] (%s/%s)" (replicate blocks '>') (replicate (bar - blocks) ' ') (formatTime cur) (formatTime len)
+      where 
+        (len, cur) = progress
+        ratio = if len == 0 then 0 else cur / len
+        bar = 25 :: Int
+        blocks = floor $ fromIntegral bar * ratio
+    lyricsBar = UI.mkGreen $ UI.hCenter $ UI.str $ if null lyrics then " " else lyrics
+    player = UI.viewport "vp" UI.Both $ UI.vBox $ do
       (song, index) <- zip (toList playSequence) [1 .. ]
-      let mkItem | index == focusedIndex = UI.visible . UI.mkFocused
-                 | otherwise = UI.mkUnfocused
-      return $ mkItem (show index ++ ". " ++ format song)
+      let mkItem | index == focusedIndex = UI.visible . UI.mkCyan . UI.str . UI.mkFocused
+                 | otherwise = UI.mkWhite . UI.str . UI.mkUnfocused
+      return $ mkItem (show index ++ ". " ++ formatSong song)
 
 playerMenuEvent :: State -> Event -> UI.EventM (UI.Next State)
 playerMenuEvent state@State {..} event = case event of
@@ -149,13 +175,18 @@ playerMenuEvent state@State {..} event = case event of
                                else return state
         UI.continue =<< play state { currentIndex = currentIndex + 1 }
 
+  UserEventUpdateProgress p -> UI.continue state { progress = p }
+
+  UserEventUpdateLyrics l -> UI.continue state { lyrics = l }
+
   VtyEvent (UI.EvKey UI.KEsc []) -> do
     pstate <- liftIO $ atomically $ readTVar (playerState player)
     if isStopped pstate
        then liftIO exitSuccess
        else UI.continue =<< stop state
 
-  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> do
+  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> playerMenuEvent state (VtyEvent (UI.EvKey UI.KEnter []))
+  VtyEvent (UI.EvKey UI.KEnter []) -> do
     pstate <- liftIO $ atomically $ readTVar (playerState player)
     UI.continue =<< case pstate of
       Playing _ -> do
@@ -198,7 +229,7 @@ playerMenuApp :: UI.App State Event
 playerMenuApp = UI.App { UI.appDraw = playerMenuDraw
                        , UI.appStartEvent = return
                        , UI.appHandleEvent = playerMenuEvent
-                       , UI.appAttrMap = const UI.attributeMap
+                       , UI.appAttrMap = const UI.defaultAttributeMap
                        , UI.appLiftVtyEvent = VtyEvent
                        , UI.appChooseCursor = UI.neverShowCursor
                        }
@@ -211,9 +242,12 @@ playerMenuCPS source session = do
                     , player = player
                     , source = source
                     , playSequence = S.empty
+                    , onStopped = True
                     , currentIndex = 1
                     , focusedIndex = 1
                     , volume = 100
+                    , progress = (0, 0)
+                    , lyrics = []
                     , eventChan = chan
                     , pendingMasked = True
                     }

@@ -67,7 +67,7 @@ type FetchLyrics = Song.Song -> IO Song.Lyrics
 type Notify a = a -> IO ()
 
 play :: (MonadIO m, MonadReader Player m) => Song.Song -> Int -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
-play song@Song.Song {..} volume fetchLyrics onTerminate onUpdate onLyrics = do
+play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
   Player {..} <- ask
   (inHandle, outHandle, _, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
@@ -90,14 +90,14 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onUpdate onLyrics = do
     loop :: Bool -> (Double, Double, Maybe Song.Lyrics) -> String -> IO ()
     loop True _ out@('@':'F':_) = do
       let len = read (words out !! 4)
-      onUpdate (len, 0)
+      onProgress (len, 0)
       loop False (len, 0, Nothing) =<< hGetLine outHandle
 
     loop True ctx _ = loop True ctx =<< hGetLine outHandle
 
     loop False (len, cur, lyrics) out@('@':'F':_) = do
       let cur' = read (words out !! 3)
-      when (floor cur' /= floor cur) $ onUpdate (len, cur')
+      when (floor cur' /= floor cur) $ onProgress (len, cur')
       lyrics' <- case lyrics of
         Just lyrics -> Just <$> notify lyrics cur' onLyrics
         Nothing -> do
@@ -108,7 +108,7 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onUpdate onLyrics = do
       loop False (len, cur', lyrics') =<< hGetLine outHandle
 
     loop False ctx@(l, c, _) out
-      | "@P 0" `isPrefixOf` out = onUpdate (l, c)
+      | "@P 0" `isPrefixOf` out = onProgress (l, c)
       | otherwise = loop False ctx =<< hGetLine outHandle
 
     playerThread = do

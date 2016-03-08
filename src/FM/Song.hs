@@ -8,7 +8,7 @@ module FM.Song (
 ) where
 
 import Data.Default.Class
-import Data.List (intercalate, sort)
+import Data.List (intercalate)
 import Text.Parsec
 
 type SongId = Int
@@ -43,22 +43,22 @@ instance Show Lyrics where
   show (Lyrics lyrics) = unlines [ "Lyrics {", unlines $ map (\(t, l) -> "  [" ++ show t ++ "]" ++ l) lyrics, "}" ]
 
 instance Default Lyrics where
-  def = Lyrics [ (0, "No lyrics.") ]
+  def = Lyrics [ (0, "No Lyrics") ]
 
 type Parser = Parsec String ()
 
 parseLyrics :: [String] -> Lyrics
-parseLyrics = Lyrics . sort . concatMap (either (const []) return . runParser parser () [])
+parseLyrics = Lyrics . concatMap (either (const []) return . runParser parser () [])
   where
     parser :: Parser (Double, String)
     parser = do
-      let number = read <$> many1 digit
+      let number = read <$> many1 digit :: Parser Int
       time <- between (char '[') (char ']') $ do
-        mm <- fromInteger <$> number
+        mm <- fromIntegral <$> number
         char ':'
-        ss <- fromInteger <$> number
+        ss <- fromIntegral <$> number
         char '.'
-        xx <- fromInteger <$> number
+        xx <- fromIntegral <$> number
         return $ mm * 60 + ss + xx / 100
       body <- manyTill anyToken eof 
       return (time, body)

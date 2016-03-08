@@ -64,8 +64,8 @@ executable fm
                      , vty
                      , fm-client
   other-modules:
-    UI.Attributes
     UI.Black
+    UI.Extra
     UI.Login
     UI.Menu.Player
     UI.Menu.Source

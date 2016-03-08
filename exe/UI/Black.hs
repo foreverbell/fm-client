@@ -8,7 +8,7 @@ import qualified Brick.Main as UI
 import qualified Brick.Widgets.Core as UI
 import qualified Brick.Types as UI
 import qualified Graphics.Vty as UI
-import qualified UI.Attributes as UI
+import qualified UI.Extra as UI
 
 import           Control.Concurrent.Chan (newChan, writeChan)
 import           Control.Monad (void)
@@ -29,7 +29,7 @@ blackApp :: UI.App (State a) Event
 blackApp = UI.App { UI.appDraw = const [UI.str []]
                   , UI.appStartEvent = return
                   , UI.appHandleEvent = blackEvent
-                  , UI.appAttrMap = const UI.attributeMap
+                  , UI.appAttrMap = const UI.defaultAttributeMap
                   , UI.appLiftVtyEvent = Event
                   , UI.appChooseCursor = UI.neverShowCursor
                   }

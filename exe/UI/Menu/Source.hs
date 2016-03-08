@@ -9,7 +9,7 @@ import qualified Brick.Types as UI
 import qualified Brick.Widgets.Center as UI
 import qualified Brick.Widgets.Core as UI
 import qualified Graphics.Vty as UI
-import qualified UI.Attributes as UI
+import qualified UI.Extra as UI
 
 import           UI.Types
 
@@ -37,11 +37,11 @@ sourceMenuDraw :: State -> [UI.Widget]
 sourceMenuDraw state = [ui]
   where
     ui = UI.vCenter $ UI.vBox [ title, UI.str " ", menu ]
-    title = UI.hCenter (UI.mkBanner "Select Source")
+    title = UI.mkYellow $ UI.hCenter $ UI.str "Select Source"
     menu = UI.hCenter $ UI.vBox $ do
       ms <- [minBound .. maxBound] :: [MusicSource]
-      let mkItem | source state == ms = UI.mkFocused
-                 | otherwise = UI.mkUnfocused
+      let mkItem | source state == ms = UI.mkCyan . UI.str . UI.mkFocused
+                 | otherwise = UI.mkWhite . UI.str . UI.mkUnfocused
       return $ mkItem (show ms)
 
 sourceMenuEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
@@ -60,7 +60,7 @@ sourceMenuApp :: UI.App State UI.Event
 sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
                        , UI.appStartEvent = return
                        , UI.appHandleEvent = sourceMenuEvent
-                       , UI.appAttrMap = const UI.attributeMap
+                       , UI.appAttrMap = const UI.defaultAttributeMap
                        , UI.appLiftVtyEvent = id
                        , UI.appChooseCursor = UI.neverShowCursor
                        }
