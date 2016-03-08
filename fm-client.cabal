@@ -25,6 +25,7 @@ library
                      , exceptions
                      , process
                      , stm
+                     , async
                      , data-default-class
                      , mtl
                      , transformers

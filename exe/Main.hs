@@ -18,7 +18,7 @@ delay seconds = liftIO $ threadDelay (seconds * 1000000)
 test :: IO ()
 test = void $ do
   session <- initSession True
-  player <- initialPlayer
+  player <- initPlayer
   [username, password] <- take 2 . lines <$> liftIO (readFile "passport")
   fm <- runSessionOnly session $ do
     login username password
@@ -30,9 +30,8 @@ test = void $ do
   let onTerminate b = do
         putStrLn $ if b then "normally exit" else "user interrupt"
         putMVar signal ()
-  let onUpdate x = putStrLn $ show x
   runPlayerOnly player $ do
-    play (fm !! 0) 100 (runSessionOnly session . fetchLyrics) onTerminate onUpdate
+    play (fm !! 0) 100 (runSessionOnly session . fetchLyrics) onTerminate print putStrLn
     liftIO $ delay 5
     pause
     liftIO $ delay 1

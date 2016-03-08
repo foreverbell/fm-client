@@ -89,8 +89,9 @@ fetchMore state@State {..} = do
 play :: (MonadIO m) => State -> m State
 play state@State {..} = do
   let onTerminate e = when e (writeChan eventChan UserEventPending)
-  let onUpdate = const $ return ()
-  liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onUpdate
+  let onUpdate _ = return ()
+  let onLyrics _ = return ()
+  liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onUpdate onLyrics
   return state { focusedIndex = currentIndex, pendingMasked = False }
 
 pause :: (MonadIO m) => State -> m State
@@ -204,7 +205,7 @@ playerMenuApp = UI.App { UI.appDraw = playerMenuDraw
 
 playerMenuCPS :: MusicSource -> SomeSession -> IO ()
 playerMenuCPS source session = do
-  player <- initialPlayer
+  player <- initPlayer
   chan <- newChan
   let state = State { session = session
                     , player = player
