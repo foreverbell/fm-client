@@ -14,12 +14,13 @@ import qualified UI.Extra as UI
 import           UI.Types
 
 import           Control.Concurrent (forkIO)
-import           Control.Concurrent.Chan (Chan, writeChan, newChan)
+import           Control.Concurrent.Chan (writeChan, newChan)
 import           Control.Concurrent.STM.TVar
 import           Control.Monad (void, when)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Cont (Cont, cont)
 import           Control.Monad.STM (atomically)
+import           Data.Char (chr)
 import           Data.Default.Class
 import           Data.Foldable (toList)
 import           Data.List (intercalate)
@@ -43,7 +44,7 @@ data State = State {
 , volume        :: Int
 , progress      :: (Double, Double)
 , lyrics        :: String 
-, eventChan     :: Chan Event
+, postEvent     :: Event -> IO ()
 , pendingMasked :: Bool
 }
 
@@ -64,7 +65,7 @@ fetch state@State {..} = do
   new <- case source of
     NetEaseFM -> liftSession state NetEase.fetchFM
     NetEasePublicFM -> liftSession state NetEase.fetchFM
-    NetEaseDailyRecommendation -> liftSession state NetEase.fetchRListAsFM
+    NetEaseDailyRecommendation -> liftSession state NetEase.fetchRecommend
   if null new
      then error "unable to fetch new songs"
      else return new
@@ -94,9 +95,9 @@ fetchMore state@State {..} = do
 
 play :: (MonadIO m) => State -> m State
 play state@State {..} = do
-  let onTerminate e = when e (writeChan eventChan UserEventPending)
-  let onProgress p = writeChan eventChan (UserEventUpdateProgress p)
-  let onLyrics l = writeChan eventChan (UserEventUpdateLyrics l)
+  let onTerminate e = when e (postEvent UserEventPending)
+  let onProgress p = postEvent (UserEventUpdateProgress p)
+  let onLyrics l = postEvent (UserEventUpdateLyrics l)
   liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onProgress onLyrics
   return state { focusedIndex = currentIndex
                , onStopped = False
@@ -134,28 +135,36 @@ decreaseVolume state@State {..} d = do
   liftPlayer state (Player.setVolume vol)
   return state { volume = vol }
 
-vpSize :: Int
-vpSize = 15
-
 playerMenuDraw :: State -> [UI.Widget]
 playerMenuDraw State {..} = [ui]
   where
     formatSong Song.Song {..} = printf "%s - %s - %s" title (intercalate " / " artists) album :: String
+
     formatTime time = printf "%02d:%02d" minute second :: String
       where (minute, second) = floor time `quotRem` 60 :: (Int, Int)
-    ui = UI.vBox [banner, progressBar, UI.separator, lyricsBar, UI.separator, player]
-    banner | onStopped = UI.mkYellow $ UI.hCenter $ UI.str $ "[Stopped]"
-           | otherwise = UI.mkYellow $ UI.hCenter $ UI.str $ formatSong $ playSequence `S.index` (currentIndex - 1)
+
+    ui = UI.vBox [UI.separator, banner, UI.separator, progressBar, UI.separator, lyricsBar, UI.separator, player]
+
+    banner = UI.hCenter $ UI.hBox [UI.mkRed $ UI.str star, UI.mkYellow $ UI.str body]
+      where 
+        (body, star) | onStopped = ("[Stopped]", [])
+                     | otherwise = (formatSong song, if Song.starred song then star else [])
+          where 
+            song = playSequence `S.index` (currentIndex - 1)
+            star = [chr 9829] ++ "  "
+
     progressBar | onStopped = UI.separator
-                | otherwise = UI.mkRed $ UI.hCenter $ UI.str $ 
+                | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ 
                     printf "[%s%s] (%s/%s)" (replicate blocks '>') (replicate (bar - blocks) ' ') (formatTime cur) (formatTime len)
       where 
         (len, cur) = progress
         ratio = if len == 0 then 0 else cur / len
         bar = 25 :: Int
         blocks = floor $ fromIntegral bar * ratio
-    lyricsBar = UI.mkGreen $ UI.hCenter $ UI.str $ if null lyrics then " " else lyrics
-    player = UI.viewport "vp" UI.Both $ UI.vBox $ do
+
+    lyricsBar = UI.mkRed $ UI.hCenter $ UI.str $ if null lyrics then " " else lyrics
+
+    player = UI.viewport "vp" UI.Vertical $ UI.hCenter $ UI.vBox $ do
       (song, index) <- zip (toList playSequence) [1 .. ]
       let mkItem | index == focusedIndex = UI.visible . UI.mkCyan . UI.str . UI.mkFocused
                  | otherwise = UI.mkWhite . UI.str . UI.mkUnfocused
@@ -203,10 +212,6 @@ playerMenuEvent state@State {..} event = case event of
              play state { currentIndex = focusedIndex }
       Stopped -> play state { currentIndex = focusedIndex }
 
-  VtyEvent (UI.EvKey UI.KPageUp []) -> UI.continue state { focusedIndex = max 1 (focusedIndex - vpSize) }
-
-  VtyEvent (UI.EvKey UI.KPageDown []) -> UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + vpSize) }
-
   VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 1 (focusedIndex - 1) } 
 
   VtyEvent (UI.EvKey UI.KDown []) -> do
@@ -238,6 +243,7 @@ playerMenuCPS :: MusicSource -> SomeSession -> IO ()
 playerMenuCPS source session = do
   player <- initPlayer
   chan <- newChan
+  let postEvent = writeChan chan
   let state = State { session = session
                     , player = player
                     , source = source
@@ -248,10 +254,10 @@ playerMenuCPS source session = do
                     , volume = 100
                     , progress = (0, 0)
                     , lyrics = []
-                    , eventChan = chan
+                    , postEvent = postEvent
                     , pendingMasked = True
                     }
-  writeChan chan UserEventFetchMore
+  postEvent UserEventFetchMore
   void $ UI.customMain (UI.mkVty def) chan playerMenuApp state
 
 playerMenu :: MusicSource -> SomeSession -> Cont (IO ()) (IO ())

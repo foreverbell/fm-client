@@ -8,7 +8,7 @@ import FM.Session
 data MusicSource = NetEaseFM
                  | NetEasePublicFM
                  | NetEaseDailyRecommendation
-  deriving (Enum, Bounded, Eq)
+  deriving (Eq)
 
 instance Show MusicSource where
   show NetEaseFM = "NetEase Cloud Music FM"

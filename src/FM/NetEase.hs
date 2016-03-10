@@ -1,11 +1,13 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards, LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module FM.NetEase (
   initSession
 , login
 , fetchFM
-, fetchRListAsFM
+, fetchRecommend
+, fetchPlayLists
+, fetchPlayList
 , star
 , unstar
 , trash
@@ -46,10 +48,10 @@ instance IsQuery () where
   fromQuery () = BS.empty
 
 data Session = Session {
-  sessionManager        :: HTTP.Manager
-, sessionRequestHeaders :: HTTP.RequestHeaders
-, sessionCookies        :: IORef HTTP.CookieJar
-, sessionSecure         :: Bool
+  sessionManager :: HTTP.Manager
+, sessionUserId  :: IORef Int
+, sessionSecure  :: Bool
+, sessionCookies :: IORef HTTP.CookieJar
 } deriving (Typeable)
 
 instance IsSession Session
@@ -70,7 +72,11 @@ instance JSON.FromJSON ResponseMessage where
   parseJSON (JSON.Object v) = ResponseMessage <$> v .: "code" <*> v .:? "message"
   parseJSON _ = fail "invalid response"
 
-{- TODO: Seems using IORef for cookies is a bit problematic, or fix it with MVar/STM ? -}
+checkJSON :: (MonadIO m) => Either String a -> (a -> m b) -> m b
+checkJSON r f = case r of
+  Right x -> f x
+  Left err -> liftIO $ throwM $ NetEaseParseException err
+
 sendRequest :: (MonadIO m, IsQuery q) => Session -> HTTPMethod -> String -> q -> m BS.ByteString
 sendRequest Session {..} method url query = liftIO $ case method of
     Get -> catch get (throwM . NetEaseHTTPException)
@@ -79,89 +85,64 @@ sendRequest Session {..} method url query = liftIO $ case method of
   where
     initRequest request = do
       cookies <- liftIO $ readIORef sessionCookies
-      return request { HTTP.requestHeaders = sessionRequestHeaders
+      return request { HTTP.requestHeaders = [ (HTTP.hAccept, "*/*")
+                                             , (HTTP.hAcceptEncoding, "gzip,deflate,sdch")
+                                             , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
+                                             , (HTTP.hConnection, "keep-alive")
+                                             , (HTTP.hContentType, "application/x-www-form-urlencoded")
+                                             , (HTTP.hHost, "music.163.com")
+                                             , (HTTP.hReferer, "http://music.163.com/search/")
+                                             ]
                      , HTTP.cookieJar = Just cookies
                      , HTTP.secure = sessionSecure
                      , HTTP.port = if sessionSecure then 443 else 80
                      }
 
     post saveCookies = do
-      initialRequest <- liftIO $ initRequest =<< HTTP.parseUrl url
+      initialRequest <- initRequest =<< HTTP.parseUrl url
       send saveCookies $ initialRequest { HTTP.method = "POST"
                                         , HTTP.requestBody = HTTP.RequestBodyBS $ fromQuery query
                                         }
 
     get = do
       let action = mconcat [ url, "?", BS8.unpack $ fromQuery query ]
-      initialRequest <- liftIO $ initRequest =<< HTTP.parseUrl action
+      initialRequest <- initRequest =<< HTTP.parseUrl action
       send False $ initialRequest { HTTP.method = "GET" }
 
     send saveCookies request = do
-      response <- fmap BL.toStrict <$> liftIO (HTTP.httpLbs request sessionManager)
+      response <- fmap BL.toStrict <$> HTTP.httpLbs request sessionManager
       let HTTP.Status {..} = HTTP.responseStatus response
       case statusCode of
         200 -> do
-          when saveCookies $ liftIO $ do
+          when saveCookies $ do
             now <- getCurrentTime
             let updateCookieJar = fst . HTTP.updateCookieJar response request now
             modifyIORef' sessionCookies updateCookieJar
           let body = HTTP.responseBody response
-          case JSON.eitherDecode (BL.fromStrict body) of
-            Right (ResponseMessage 200 _) -> return body
-            Right (ResponseMessage rc m) -> throwM $ NetEaseOtherExceptipon rc m
-            Left err -> throwM $ NetEaseParseException err
+          checkJSON (JSON.eitherDecode (BL.fromStrict body)) $ \case
+            ResponseMessage 200 _ -> return body
+            ResponseMessage rc m -> throwM (NetEaseOtherExceptipon rc m)
         _ -> throwM (NetEaseStatusCodeException statusCode (BS8.unpack <$> response))
 
 initSession :: (MonadIO m) => Bool -> m Session
 initSession sessionSecure = do
   sessionManager <- liftIO $ HTTP.newManager (if sessionSecure then HTTP.tlsManagerSettings else HTTP.defaultManagerSettings)
-  let sessionRequestHeaders = [ (HTTP.hAccept, "*/*")
-                              , (HTTP.hAcceptEncoding, "gzip,deflate,sdch")
-                              , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
-                              , (HTTP.hConnection, "keep-alive")
-                              , (HTTP.hContentType, "application/x-www-form-urlencoded")
-                              , (HTTP.hHost, "music.163.com")
-                              , (HTTP.hReferer, "http://music.163.com/search/")
-                              ]
+  sessionUserId <- liftIO $ newIORef 0
   sessionCookies <- liftIO $ newIORef (HTTP.createCookieJar [])
   return Session {..}
 
-data EncryptedData = EncryptedData {
-  encryptedText :: BS.ByteString
-, encryptedSecretKey :: BS.ByteString
-}
+data NetEaseQuery = Star Song.SongId 
+                  | Unstar Song.SongId
+                  | Trash Song.SongId
+                  | FetchLyrics Song.SongId
+                  | FetchPlayLists Int
+                  | FetchPlayList Int
+                  | EncryptData BS.ByteString BS.ByteString
 
-instance IsQuery EncryptedData where
-  fromQuery (EncryptedData text secretKey) = HTTP.renderSimpleQuery False [ ("params", text), ("encSecKey", secretKey) ]
+instance IsQuery NetEaseQuery where
+  fromQuery (EncryptData text key) = HTTP.renderSimpleQuery False 
+    [ ("params", text), ("encSecKey", key) ]
 
-createSecretKey :: (MonadIO m) => Int -> m BS.ByteString
-createSecretKey n = mconcat <$> replicateM n (toHex <$> liftIO (getStdRandom $ randomR (0 :: Int, 15)))
-
-createEncryptedText :: (MonadIO m) => BS.ByteString -> m EncryptedData
-createEncryptedText text = do
-  secretKey <- createSecretKey 16
-  return EncryptedData { encryptedText = encryptAES secretKey text, encryptedSecretKey = encryptRSA secretKey }
-
-createEncryptedLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m EncryptedData
-createEncryptedLogin username password = createEncryptedText $ encodeJSON $ JSON.object 
-  [ ("username", JSON.toJSON username)
-  , ("password", JSON.toJSON password)
-  , ("rememberLogin", JSON.toJSON False)
-  ]
-
-createEncryptedPhoneLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m EncryptedData
-createEncryptedPhoneLogin phone password = createEncryptedText $ encodeJSON $ JSON.object 
-  [ ("phone", JSON.toJSON phone)
-  , ("password", JSON.toJSON password)
-  , ("rememberLogin", JSON.toJSON False)
-  ]
-
-data FMOperation = Star Song.SongId 
-                 | Unstar Song.SongId
-                 | Trash Song.SongId
-                 | FetchLyrics Song.SongId
-
-instance IsQuery FMOperation where
   fromQuery (Star id) = HTTP.renderSimpleQuery False 
     [ ("alg", "itembased"), ("trackId", BS8.pack (show id)), ("like", "true"), ("time", "25") ]
 
@@ -174,24 +155,51 @@ instance IsQuery FMOperation where
   fromQuery (FetchLyrics id) = HTTP.renderSimpleQuery False 
     [ ("os", "osx"), ("id", BS8.pack (show id)), ("lv", "-1"), ("kv", "-1"), ("tv", "-1") ]
 
+  fromQuery (FetchPlayLists uid) = HTTP.renderSimpleQuery False 
+    [ ("offset", "0"), ("limit", "100"), ("uid", BS8.pack (show uid)) ]
+
+  fromQuery (FetchPlayList id) = HTTP.renderSimpleQuery False 
+    [ ("id", BS8.pack (show id)) ]
+
+createSecretKey :: (MonadIO m) => Int -> m BS.ByteString
+createSecretKey n = mconcat <$> replicateM n (toHex <$> liftIO (getStdRandom $ randomR (0 :: Int, 15)))
+
+createEncryptedText :: (MonadIO m) => BS.ByteString -> m NetEaseQuery
+createEncryptedText text = do
+  secretKey <- createSecretKey 16
+  return $ EncryptData (encryptAES secretKey text) (encryptRSA secretKey)
+
+createEncryptedLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m NetEaseQuery
+createEncryptedLogin username password = createEncryptedText $ encodeJSON $ JSON.object 
+  [ ("username", JSON.toJSON username)
+  , ("password", JSON.toJSON password)
+  , ("rememberLogin", JSON.toJSON False)
+  ]
+
+createEncryptedPhoneLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m NetEaseQuery
+createEncryptedPhoneLogin phone password = createEncryptedText $ encodeJSON $ JSON.object 
+  [ ("phone", JSON.toJSON phone)
+  , ("password", JSON.toJSON password)
+  , ("rememberLogin", JSON.toJSON False)
+  ]
+
 login :: (MonadIO m, MonadReader Session m) => String -> String -> m ()
 login username password = do
   session <- ask
   let isPhone = all isDigit username
-  let (loginMethod, loginAction) | isPhone = (createEncryptedPhoneLogin, "http://music.163.com/weapi/login/cellphone")
-                                 | otherwise = (createEncryptedLogin, "http://music.163.com/weapi/login")
-  loginMethod (BS8.pack username) (encryptPassword $ BS8.pack password) >>= void . sendRequest session PostCookies loginAction
+  let (loginMethod, loginURL) | isPhone = (createEncryptedPhoneLogin, "http://music.163.com/weapi/login/cellphone")
+                              | otherwise = (createEncryptedLogin, "http://music.163.com/weapi/login")
+  body <- loginMethod (BS8.pack username) (encryptPassword $ BS8.pack password) >>= sendRequest session PostCookies loginURL
+  liftIO $ checkJSON (decodeUserId body) (writeIORef (sessionUserId session))
 
 fetchFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchFM = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/radio/get" ()
-  case decodeFM body of
-    Left err -> liftIO $ throwM $ NetEaseParseException err
-    Right fm -> return fm
+  liftIO $ checkJSON (decodeFM body) return
 
-fetchRListAsFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]
-fetchRListAsFM = do
+fetchRecommend :: (MonadIO m, MonadReader Session m) => m [Song.Song]
+fetchRecommend = do
   session@Session {..} <- ask
   cookies <- liftIO $ HTTP.destroyCookieJar <$> readIORef sessionCookies
   case find (\HTTP.Cookie {..} -> cookie_name == "__csrf") cookies of
@@ -205,10 +213,22 @@ fetchRListAsFM = do
         , ("csrf_token", JSON.toJSON csrf)
         ]
       body <- sendRequest session Post url request
-      case decodeRList body of
-        Left err -> liftIO $ throwM $ NetEaseParseException err
-        Right fm -> return fm
+      liftIO $ checkJSON (decodeRecommend body) return
     Nothing -> return []
+
+-- | TODO: login guard
+fetchPlayLists :: (MonadIO m, MonadReader Session m) => m [(Int, String)]
+fetchPlayLists = do
+  session@Session {..} <- ask
+  userId <- liftIO $ readIORef sessionUserId
+  body <- sendRequest session Get "http://music.163.com/api/user/playlist" (FetchPlayLists userId)
+  liftIO $ checkJSON (decodePlayLists body) return
+
+fetchPlayList :: (MonadIO m, MonadReader Session m) => Int -> m [Song.Song]
+fetchPlayList id = do
+  session <- ask
+  body <- sendRequest session Get "http://music.163.com/api/playlist/detail" (FetchPlayList id)
+  liftIO $ checkJSON (decodePlayList body) return
 
 -- | TODO: test star, unstar, trash
 star :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()

@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
 
 module UI.Menu.Source (
   sourceMenu
@@ -16,44 +16,36 @@ import           UI.Types
 import           Control.Monad (void)
 import           Control.Monad.IO.Class (liftIO)
 import           Control.Monad.Cont (Cont, cont)
+import qualified Data.Sequence as S
 import           System.Exit (exitSuccess)
 
 data State = State {
-  source :: MusicSource
-, continuation :: MusicSource -> IO ()
+  sourceSequence :: S.Seq MusicSource
+, currentIndex   :: Int
+, continuation   :: MusicSource -> IO ()
 }
 
-safeSucc :: (Enum a, Bounded a, Eq a) => Bool -> a -> a
-safeSucc cyclic x 
-  | x == maxBound = if cyclic then minBound else maxBound
-  | otherwise = succ x
-
-safePred :: (Enum a, Bounded a, Eq a) => Bool -> a -> a
-safePred cyclic x
-  | x == minBound = if cyclic then maxBound else minBound
-  | otherwise = pred x
-
+-- | TODO: handle empty sourceSequence
 sourceMenuDraw :: State -> [UI.Widget]
-sourceMenuDraw state = [ui]
+sourceMenuDraw State {..} = [ui]
   where
-    ui = UI.vCenter $ UI.vBox [ title, UI.str " ", menu ]
+    ui = UI.vCenter $ UI.vLimit 15 $ UI.vBox [ title, UI.str " ", menu ]
     title = UI.mkYellow $ UI.hCenter $ UI.str "Select Source"
-    menu = UI.hCenter $ UI.vBox $ do
-      ms <- [minBound .. maxBound] :: [MusicSource]
-      let mkItem | source state == ms = UI.mkCyan . UI.str . UI.mkFocused
+    menu = UI.viewport "vp" UI.Vertical $ UI.hCenter $ UI.vBox $ do
+      index <- [0 .. S.length sourceSequence - 1]
+      let mkItem | currentIndex == index = UI.mkCyan . UI.str . UI.mkFocused
                  | otherwise = UI.mkWhite . UI.str . UI.mkUnfocused
-      return $ mkItem (show ms)
+      return $ mkItem $ show $ sourceSequence `S.index` index
 
 sourceMenuEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
 sourceMenuEvent state@State {..} event = case event of
   UI.EvKey UI.KEsc [] -> liftIO exitSuccess
+  UI.EvKey (UI.KChar ' ') [] -> sourceMenuEvent state (UI.EvKey UI.KEnter [])
   UI.EvKey UI.KEnter [] -> UI.suspendAndResume $ do
-    continuation source
+    continuation $ sourceSequence `S.index` currentIndex
     exitSuccess
-  UI.EvKey (UI.KChar '\t') [] -> UI.continue $ state { source = safeSucc True source }
-  UI.EvKey UI.KBackTab [] -> UI.continue $ state { source = safePred True source }
-  UI.EvKey UI.KDown [] -> UI.continue $ state { source = safeSucc False source }
-  UI.EvKey UI.KUp [] -> UI.continue $ state { source = safePred False source }
+  UI.EvKey UI.KDown [] -> UI.continue $ state { currentIndex = (currentIndex + 1) `mod` S.length sourceSequence }
+  UI.EvKey UI.KUp [] -> UI.continue $ state { currentIndex = (currentIndex - 1) `mod` S.length sourceSequence }
   _ -> UI.continue state
 
 sourceMenuApp :: UI.App State UI.Event
@@ -65,8 +57,8 @@ sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
                        , UI.appChooseCursor = UI.neverShowCursor
                        }
 
-sourceMenuCPS :: (MusicSource -> IO ()) -> IO ()
-sourceMenuCPS cont = void $ UI.defaultMain sourceMenuApp (State minBound cont)
+sourceMenuCPS :: [MusicSource] -> (MusicSource -> IO ()) -> IO ()
+sourceMenuCPS sources cont = void $ UI.defaultMain sourceMenuApp $ State (S.fromList sources) 0 cont
 
-sourceMenu :: Cont (IO ()) MusicSource
-sourceMenu = cont sourceMenuCPS
+sourceMenu :: [MusicSource] -> Cont (IO ()) MusicSource
+sourceMenu sources = cont (sourceMenuCPS sources)
