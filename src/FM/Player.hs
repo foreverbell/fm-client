@@ -24,7 +24,7 @@ import           Control.Monad.STM (atomically)
 import           Data.List (isPrefixOf)
 
 import           System.IO
-import           System.Process (ProcessHandle, runInteractiveProcess, terminateProcess)
+import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess)
 
 import qualified FM.Song as Song
 
@@ -119,7 +119,8 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
 
     cleanUp e = do
       PlayerContext {..} <- atomically $ readTMVar playerContext
-      terminateProcess processHandle
+      hPutStrLn inHandle "Q"
+      waitForProcess processHandle
       cancel lyricsAsync
       atomically $ do
         writeTVar playerState Stopped
