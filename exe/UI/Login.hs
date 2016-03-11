@@ -1,5 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
 
 module UI.Login ( 
   login
@@ -13,17 +12,20 @@ import           Brick.Widgets.Core ((<+>))
 import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Extra as UI
-import           UI.Black (black)
 
 import           UI.Types
 
-import           Control.Monad (void)
+import           Control.Concurrent.Chan (Chan, newChan, writeChan)
+
+import           Control.Monad (void, when)
 import           Control.Monad.IO.Class (liftIO)
-import           Control.Monad.Cont (Cont, cont)
-import           System.Exit (exitSuccess)
+import           Control.Monad.Cont (ContT (..))
+import           Data.Default.Class
 
 import qualified FM.NetEase as NetEase
 import           FM.FM (runSessionOnly)
+
+data Event = Event UI.Event | Ohayou | Oyasumi
 
 data EditorType = UserNameEditor | PasswordEditor
   deriving (Show)
@@ -33,6 +35,8 @@ data State = State {
 , userNameEditor :: UI.Editor
 , passwordEditor :: UI.Editor
 , musicSource    :: MusicSource
+, uiTitle        :: String
+, chan           :: Chan Event
 , continuation   :: SomeSession -> IO ()
 }
 
@@ -54,29 +58,36 @@ switchEditor state@State {..} = state { currentEditor = newEditor }
 loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
-    ui = UI.vCenter $ UI.vBox 
-           [ UI.mkYellow $ UI.hCenter $ UI.str "NetEase Login"
-           , UI.separator
-           , UI.hCenter $ UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
-           , UI.hCenter $ UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
-           ]
+    black = UI.str []
+    ui = case musicSource of
+      NetEasePublicFM -> black
+      _ -> UI.vCenter $ UI.vBox [ UI.mkYellow $ UI.hCenter $ UI.str uiTitle
+                                , UI.separator
+                                , UI.hCenter $ UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
+                                , UI.hCenter $ UI.str "password: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
+                                ]
 
-loginEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
+loginEvent :: State -> Event -> UI.EventM (UI.Next State)
 loginEvent state@State {..} event = case event of
-  UI.EvKey UI.KEsc [] -> liftIO exitSuccess
-  UI.EvKey UI.KEnter [] -> case currentEditor of
+  Ohayou -> do
+    session <- NetEase.initSession True
+    UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
+  Oyasumi -> UI.halt state
+  Event (UI.EvKey UI.KEsc []) -> UI.halt state
+  Event (UI.EvKey UI.KEnter []) -> case currentEditor of
     PasswordEditor -> do
       let [userName] = UI.getEditContents $ userNameEditor
       let [password] = UI.getEditContents $ passwordEditor
-      session <- NetEase.initSession True
-      liftIO $ runSessionOnly session (NetEase.login userName password)
-      UI.suspendAndResume $ do
-        continuation (SomeSession session)
-        exitSuccess
+      session <- case viewMusicSource musicSource of
+        NetEaseMusic -> do
+          session <- NetEase.initSession True
+          liftIO $ runSessionOnly session (NetEase.login userName password)
+          return session
+      UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
     UserNameEditor -> UI.continue $ switchEditor state
-  UI.EvKey (UI.KChar '\t') [] -> UI.continue $ switchEditor state
-  UI.EvKey UI.KBackTab [] -> UI.continue $ switchEditor state
-  _ -> do
+  Event (UI.EvKey (UI.KChar '\t') []) -> UI.continue $ switchEditor state
+  Event (UI.EvKey UI.KBackTab []) -> UI.continue $ switchEditor state
+  Event event -> do
     editor <- UI.handleEvent event (selectEditor state)
     UI.continue $ case currentEditor of
       UserNameEditor -> state { userNameEditor = editor }
@@ -85,26 +96,29 @@ loginEvent state@State {..} event = case event of
 loginCursor :: State -> [UI.CursorLocation] -> Maybe UI.CursorLocation
 loginCursor state = UI.showCursorNamed (editorName $ currentEditor state)
 
-loginApp :: UI.App State UI.Event
+loginApp :: UI.App State Event
 loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appChooseCursor = loginCursor
                   , UI.appHandleEvent = loginEvent
                   , UI.appStartEvent = return
                   , UI.appAttrMap = const UI.defaultAttributeMap
-                  , UI.appLiftVtyEvent = id
+                  , UI.appLiftVtyEvent = Event
                   }
 
-loginCPS :: MusicSource -> (SomeSession -> IO ()) -> IO ()
-loginCPS NetEasePublicFM cont = black (SomeSession <$> NetEase.initSession True) cont
-loginCPS source cont = do
+loginCPS :: String -> MusicSource -> (SomeSession -> IO ()) -> IO ()
+loginCPS title source cont = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
-  void $ UI.defaultMain loginApp State { currentEditor = UserNameEditor
-                                       , userNameEditor = editor1
-                                       , passwordEditor = editor2
-                                       , musicSource = source
-                                       , continuation = cont
-                                       }
+  chan <- newChan
+  when (source == NetEasePublicFM) (writeChan chan Ohayou)
+  void $ UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
+                                                          , userNameEditor = editor1
+                                                          , passwordEditor = editor2
+                                                          , musicSource = source
+                                                          , uiTitle = title
+                                                          , chan = chan
+                                                          , continuation = cont
+                                                          }
 
-login :: MusicSource -> Cont (IO ()) SomeSession
-login source = cont (loginCPS source)
+login :: String -> MusicSource -> ContT () IO SomeSession
+login title source = ContT (loginCPS title source)

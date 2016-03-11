@@ -22,8 +22,8 @@ newtype SessionOnly s a = SessionOnly (ReaderT s IO a)
 newtype PlayerOnly a = PlayerOnly (ReaderT Player IO a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader Player)
 
-runSessionOnly :: (IsSession s) => s -> SessionOnly s a -> IO a
-runSessionOnly session (SessionOnly m) = runReaderT m session
+runSessionOnly :: (IsSession s) => SomeSession -> SessionOnly s a -> IO a
+runSessionOnly session (SessionOnly m) = runReaderT m (fromSession session)
 
 runPlayerOnly :: Player -> PlayerOnly a -> IO a
 runPlayerOnly player (PlayerOnly m) = runReaderT m player

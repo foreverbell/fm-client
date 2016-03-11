@@ -14,10 +14,8 @@ import qualified UI.Extra as UI
 import           UI.Types
 
 import           Control.Monad (void)
-import           Control.Monad.IO.Class (liftIO)
-import           Control.Monad.Cont (Cont, cont)
+import           Control.Monad.Cont (ContT (..))
 import qualified Data.Sequence as S
-import           System.Exit (exitSuccess)
 
 data State = State {
   sourceSequence :: S.Seq MusicSource
@@ -25,7 +23,6 @@ data State = State {
 , continuation   :: MusicSource -> IO ()
 }
 
--- | TODO: handle empty sourceSequence
 sourceMenuDraw :: State -> [UI.Widget]
 sourceMenuDraw State {..} = [ui]
   where
@@ -39,14 +36,15 @@ sourceMenuDraw State {..} = [ui]
 
 sourceMenuEvent :: State -> UI.Event -> UI.EventM (UI.Next State)
 sourceMenuEvent state@State {..} event = case event of
-  UI.EvKey UI.KEsc [] -> liftIO exitSuccess
+  UI.EvKey UI.KEsc [] -> UI.halt state
   UI.EvKey (UI.KChar ' ') [] -> sourceMenuEvent state (UI.EvKey UI.KEnter [])
-  UI.EvKey UI.KEnter [] -> UI.suspendAndResume $ do
-    continuation $ sourceSequence `S.index` currentIndex
-    exitSuccess
-  UI.EvKey UI.KDown [] -> UI.continue $ state { currentIndex = (currentIndex + 1) `mod` S.length sourceSequence }
-  UI.EvKey UI.KUp [] -> UI.continue $ state { currentIndex = (currentIndex - 1) `mod` S.length sourceSequence }
+  UI.EvKey UI.KEnter [] -> guard $ UI.suspendAndResume $ do
+                             continuation (sourceSequence `S.index` currentIndex)
+                             return state
+  UI.EvKey UI.KDown [] -> guard $ UI.continue $ state { currentIndex = (currentIndex + 1) `mod` S.length sourceSequence }
+  UI.EvKey UI.KUp [] -> guard $ UI.continue $ state { currentIndex = (currentIndex - 1) `mod` S.length sourceSequence }
   _ -> UI.continue state
+  where guard m = if S.null sourceSequence then UI.continue state else m
 
 sourceMenuApp :: UI.App State UI.Event
 sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
@@ -60,5 +58,5 @@ sourceMenuApp = UI.App { UI.appDraw = sourceMenuDraw
 sourceMenuCPS :: [MusicSource] -> (MusicSource -> IO ()) -> IO ()
 sourceMenuCPS sources cont = void $ UI.defaultMain sourceMenuApp $ State (S.fromList sources) 0 cont
 
-sourceMenu :: [MusicSource] -> Cont (IO ()) MusicSource
-sourceMenu sources = cont (sourceMenuCPS sources)
+sourceMenu :: [MusicSource] -> ContT () IO MusicSource
+sourceMenu sources = ContT (sourceMenuCPS sources)
