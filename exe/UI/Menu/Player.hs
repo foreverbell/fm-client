@@ -150,7 +150,7 @@ playerMenuDraw State {..} = [ui]
                      | otherwise = (formatSong song, if Song.starred song then star else [])
           where 
             song = playSequence `S.index` (currentIndex - 1)
-            star = [chr 9829] ++ "  "
+            star = chr 9829 : "  "
 
     progressBar | onStopped = UI.separator
                 | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ 
@@ -197,18 +197,16 @@ playerMenuEvent state@State {..} event = case event of
   VtyEvent (UI.EvKey UI.KEnter []) -> do
     pstate <- liftIO $ atomically $ readTVar (playerState player)
     UI.continue =<< case pstate of
-      Playing _ -> do
-        if currentIndex == focusedIndex
-           then pause state
-           else do
-             state@State {..} <- stop state
-             play state { currentIndex = focusedIndex }
-      Paused _ -> do
-        if currentIndex == focusedIndex
-           then resume state
-           else do
-             state@State {..} <- stop state
-             play state { currentIndex = focusedIndex }
+      Playing _ -> if currentIndex == focusedIndex
+        then pause state
+        else do
+          state@State {..} <- stop state
+          play state { currentIndex = focusedIndex }
+      Paused _ -> if currentIndex == focusedIndex
+        then resume state
+        else do
+          state@State {..} <- stop state
+          play state { currentIndex = focusedIndex }
       Stopped -> play state { currentIndex = focusedIndex }
 
   VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 0 (focusedIndex - 1) } 

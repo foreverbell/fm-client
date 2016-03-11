@@ -76,8 +76,8 @@ loginEvent state@State {..} event = case event of
   Event (UI.EvKey UI.KEsc []) -> UI.halt state
   Event (UI.EvKey UI.KEnter []) -> case currentEditor of
     PasswordEditor -> do
-      let [userName] = UI.getEditContents $ userNameEditor
-      let [password] = UI.getEditContents $ passwordEditor
+      let [userName] = UI.getEditContents userNameEditor
+      let [password] = UI.getEditContents passwordEditor
       session <- case viewMusicSource musicSource of
         NetEaseMusic -> do
           session <- NetEase.initSession True

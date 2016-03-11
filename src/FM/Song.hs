@@ -50,15 +50,20 @@ type Parser = Parsec String ()
 parseLyrics :: [String] -> Lyrics
 parseLyrics = Lyrics . concatMap (either (const []) return . runParser parser () [])
   where
+    number :: Parser Double
+    number = read <$> do
+      a <- many1 digit
+      b <- option [] $ try $ do
+        char '.'
+        ('.' :) <$> many1 digit
+      return (a ++ b)
+
     parser :: Parser (Double, String)
     parser = do
-      let number = read <$> many1 digit :: Parser Int
       time <- between (char '[') (char ']') $ do
-        mm <- fromIntegral <$> number
+        mm <- number
         char ':'
-        ss <- fromIntegral <$> number
-        char '.'
-        xx <- fromIntegral <$> number
-        return $ mm * 60 + ss + xx / 100
+        ss <- number
+        return $ mm * 60 + ss
       body <- manyTill anyToken eof 
       return (time, body)
