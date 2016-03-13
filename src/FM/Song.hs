@@ -8,7 +8,7 @@ module FM.Song (
 ) where
 
 import Data.Default.Class
-import Data.List (intercalate)
+import Data.List (intercalate, sort)
 import Text.Parsec
 
 type SongId = Int
@@ -48,7 +48,7 @@ instance Default Lyrics where
 type Parser = Parsec String ()
 
 parseLyrics :: [String] -> Lyrics
-parseLyrics = Lyrics . concatMap (either (const []) return . runParser parser () [])
+parseLyrics = Lyrics . sort . concatMap (either (const []) id . runParser parser () [])
   where
     number :: Parser Double
     number = read <$> do
@@ -58,12 +58,12 @@ parseLyrics = Lyrics . concatMap (either (const []) return . runParser parser ()
         ('.' :) <$> many1 digit
       return (a ++ b)
 
-    parser :: Parser (Double, String)
+    parser :: Parser [(Double, String)]
     parser = do
-      time <- between (char '[') (char ']') $ do
+      times <- many1 $ between (char '[') (char ']') $ do
         mm <- number
         char ':'
         ss <- number
         return $ mm * 60 + ss
       body <- manyTill anyToken eof 
-      return (time, body)
+      return $ zip times $ repeat body

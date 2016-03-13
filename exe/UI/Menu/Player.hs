@@ -159,7 +159,7 @@ playerMenuDraw State {..} = [ui]
         (len, cur) = progress
         ratio = if len == 0 then 0 else cur / len
         bar = 25 :: Int
-        blocks = floor $ fromIntegral bar * ratio
+        blocks = ceiling $ fromIntegral bar * ratio
 
     lyricsBar = UI.mkRed $ UI.hCenter $ UI.str $ if null lyrics then " " else lyrics
 
