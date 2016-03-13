@@ -1,7 +1,8 @@
 module UI.Types (
   MusicSource (..)
 , MusicSourceType (..)
-, viewMusicSource
+, viewType
+, requireLogin
 , module FM.Session
 ) where
 
@@ -23,5 +24,12 @@ instance Show MusicSource where
   show NetEasePlayLists = "NetEase Cloud Music Play List"
   show (NetEasePlayList _ title) = title
 
-viewMusicSource :: MusicSource -> MusicSourceType
-viewMusicSource _ = NetEaseMusic
+instance Show MusicSourceType where
+  show NetEaseMusic = "net-ease"
+
+viewType :: MusicSource -> MusicSourceType
+viewType _ = NetEaseMusic
+
+requireLogin :: MusicSource -> Bool
+requireLogin NetEasePublicFM = False
+requireLogin _ = True

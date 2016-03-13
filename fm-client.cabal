@@ -57,6 +57,7 @@ executable fm
   build-depends:       base
                      , transformers
                      , mtl
+                     , directory
                      , stm
                      , containers
                      , data-default-class
