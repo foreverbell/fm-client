@@ -44,7 +44,7 @@ writeLoginConfig source (userName, password) = do
   let conf = dir ++ "/" ++ show source ++ ".conf"
   writeFile conf $ unlines [userName, password]
 
-data Event = Event UI.Event | Ohayou | OhayouWithSmile | Oyasumi
+data Event = Event UI.Event | Hi | Hello | Goodbye
 
 data EditorType = UserNameEditor | PasswordEditor
   deriving (Show)
@@ -55,7 +55,7 @@ data State = State {
 , passwordEditor :: UI.Editor
 , musicSource    :: MusicSource
 , sessionManager :: SessionManager
-, onOhayou       :: Bool
+, onGreetings    :: Bool
 , uiTitle        :: String
 , chan           :: Chan Event
 , continuation   :: SomeSession -> IO ()
@@ -80,7 +80,7 @@ loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
     black = UI.str []
-    ui = UI.vCenter $ if onOhayou
+    ui = UI.vCenter $ if onGreetings
             then black
             else UI.vBox [ UI.mkYellow $ UI.hCenter $ UI.str uiTitle
                          , UI.separator
@@ -90,12 +90,12 @@ loginDraw State {..} = [ui]
 
 loginEvent :: State -> Event -> UI.EventM (UI.Next State)
 loginEvent state@State {..} event = case event of
-  Ohayou -> do
+  Hi -> do
     session <- case viewType musicSource of
       NetEaseMusic -> NetEase.initSession True
-    UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
+    UI.suspendAndResume $ continuation session >> writeChan chan Goodbye >> return state
 
-  OhayouWithSmile -> do
+  Hello -> do
     let sourceType = viewType musicSource
     session <- liftIO $ try $ do
       mSession <- lookupSession sessionManager sourceType
@@ -111,10 +111,10 @@ loginEvent state@State {..} event = case event of
           insertSession sessionManager sourceType session
           return session
     case session of
-      Left (_ :: SomeException) -> deleteSession sessionManager sourceType >> UI.continue state { onOhayou = False }
-      Right session -> UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
+      Left (_ :: SomeException) -> deleteSession sessionManager sourceType >> UI.continue state { onGreetings = False }
+      Right session -> UI.suspendAndResume $ continuation session >> writeChan chan Goodbye >> return state
 
-  Oyasumi -> UI.halt state
+  Goodbye -> UI.halt state
 
   Event (UI.EvKey UI.KEsc []) -> UI.halt state
 
@@ -130,7 +130,7 @@ loginEvent state@State {..} event = case event of
           return session
       liftIO $ writeLoginConfig sourceType (userName, password)
       insertSession sessionManager sourceType session
-      UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
+      UI.suspendAndResume $ continuation session >> writeChan chan Goodbye >> return state
     UserNameEditor -> UI.continue $ switchEditor state
 
   Event (UI.EvKey (UI.KChar '\t') []) -> UI.continue $ switchEditor state
@@ -160,14 +160,14 @@ loginCPS title source manager cont = do
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   chan <- newChan
   if requireLogin source
-     then writeChan chan OhayouWithSmile
-     else writeChan chan Ohayou
+     then writeChan chan Hello
+     else writeChan chan Hi
   void $ UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
                                                           , userNameEditor = editor1
                                                           , passwordEditor = editor2
                                                           , musicSource = source
                                                           , sessionManager = manager
-                                                          , onOhayou = True
+                                                          , onGreetings = True
                                                           , uiTitle = title
                                                           , chan = chan
                                                           , continuation = cont
