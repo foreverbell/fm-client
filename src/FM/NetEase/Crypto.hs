@@ -49,5 +49,5 @@ encryptRSA text = zfill 256 $ toHex $ (base^publicKey) `mod` modulo
                            , "172188325316586707301643237607"
                            ] :: Integer
 
-encryptPassword :: BS.ByteString -> BS.ByteString
-encryptPassword = BS8.pack . show . C.hashWith C.MD5
+encryptPassword :: String -> String
+encryptPassword = show . C.hashWith C.MD5 . BS8.pack

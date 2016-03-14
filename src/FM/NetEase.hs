@@ -4,6 +4,7 @@
 module FM.NetEase (
   initSession
 , login
+, encryptPassword
 , fetchFM
 , fetchRecommend
 , fetchPlayLists
@@ -164,32 +165,27 @@ instance IsQuery NetEaseQuery where
 createSecretKey :: (MonadIO m) => Int -> m BS.ByteString
 createSecretKey n = mconcat <$> replicateM n (toHex <$> liftIO (getStdRandom $ randomR (0 :: Int, 15)))
 
-encryptText :: (MonadIO m) => BS.ByteString -> m NetEaseQuery
-encryptText text = do
+encryptQuery :: (MonadIO m) => BS.ByteString -> m NetEaseQuery
+encryptQuery q = do
   secretKey <- createSecretKey 16
-  return $ EncryptData (encryptAES secretKey text) (encryptRSA secretKey)
-
-encryptLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m NetEaseQuery
-encryptLogin username password = encryptText $ encodeJSON $ JSON.object 
-  [ ("username", JSON.toJSON username)
-  , ("password", JSON.toJSON password)
-  , ("rememberLogin", JSON.toJSON False)
-  ]
-
-encryptPhoneLogin :: (MonadIO m) => BS.ByteString -> BS.ByteString -> m NetEaseQuery
-encryptPhoneLogin phone password = encryptText $ encodeJSON $ JSON.object 
-  [ ("phone", JSON.toJSON phone)
-  , ("password", JSON.toJSON password)
-  , ("rememberLogin", JSON.toJSON False)
-  ]
+  return $ EncryptData (encryptAES secretKey q) (encryptRSA secretKey)
 
 login :: (MonadIO m, MonadReader Session m) => String -> String -> m ()
-login username password = do
+login userName password = do
   session <- ask
-  let isPhone = length username == 11 && all isDigit username
-  let (loginMethod, loginURL) | isPhone = (encryptPhoneLogin, "http://music.163.com/weapi/login/cellphone")
-                              | otherwise = (encryptLogin, "http://music.163.com/weapi/login")
-  body <- sendRequest session PostCookies loginURL =<< loginMethod (BS8.pack username) (encryptPassword (BS8.pack password))
+  let isPhone = length userName == 11 && all isDigit userName
+  let loginURL | isPhone = "http://music.163.com/weapi/login/cellphone"
+               | otherwise = "http://music.163.com/weapi/login"
+  request <- encryptQuery $ encodeJSON $ JSON.object $ if isPhone
+               then [ ("phone", JSON.toJSON $ BS8.pack userName)
+                    , ("password", JSON.toJSON $ BS8.pack password)
+                    , ("rememberLogin", JSON.toJSON False)
+                    ]
+               else [ ("username", JSON.toJSON $ BS8.pack userName)
+                    , ("password", JSON.toJSON $ BS8.pack password)
+                    , ("rememberLogin", JSON.toJSON False)
+                    ]
+  body <- sendRequest session PostCookies loginURL request
   liftIO $ checkJSON (decodeUserId body) (writeIORef (sessionUserId session))
 
 fetchFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]
@@ -206,7 +202,7 @@ fetchRecommend = do
     Just HTTP.Cookie {..} -> do
       let csrf = BS8.unpack cookie_value
       let url = "http://music.163.com/weapi/v1/discovery/recommend/songs?csrf_token=" ++ csrf
-      request <- encryptText $ encodeJSON $ JSON.object 
+      request <- encryptQuery $ encodeJSON $ JSON.object 
         [ ("offset", JSON.toJSON (0 :: Int))
         , ("total", JSON.toJSON True)
         , ("limit", JSON.toJSON (20 :: Int))

@@ -17,7 +17,7 @@ import qualified UI.Extra as UI
 import           Control.Concurrent.Chan (Chan, newChan, writeChan)
 import           Control.Exception (SomeException, try)
 import           Control.Monad (void)
-import           Control.Monad.IO.Class (liftIO)
+import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Cont (ContT (..))
 import           Data.Default.Class
 import           System.Directory (createDirectoryIfMissing, getHomeDirectory)
@@ -28,21 +28,22 @@ import           SessionManager
 import           Types
 
 -- | TODO: Encrypt password in some ways.
-readLoginConfig :: MusicSourceType -> IO (String, String)
+getConfig :: (MonadIO m) => MusicSourceType -> m String
+getConfig source = do
+  dir <- (++ "/.fm") <$> liftIO getHomeDirectory
+  liftIO $ createDirectoryIfMissing True dir
+  return $ dir ++ "/" ++ show source ++ ".conf"
+
+readLoginConfig :: (MonadIO m) => MusicSourceType -> m (String, String)
 readLoginConfig source = do
-  dir <- (++ "/.fm") <$> getHomeDirectory
-  createDirectoryIfMissing True dir
-  let conf = dir ++ "/" ++ show source ++ ".conf"
-  input <- readFile conf
-  let [userName, password] = lines input
+  conf <- getConfig source
+  [userName, password] <- lines <$> liftIO (readFile conf)
   return (userName, password)
 
 writeLoginConfig :: MusicSourceType -> (String, String) -> IO ()
 writeLoginConfig source (userName, password) = do
-  dir <- (++ "/.fm") <$> getHomeDirectory
-  createDirectoryIfMissing True dir
-  let conf = dir ++ "/" ++ show source ++ ".conf"
-  writeFile conf $ unlines [userName, password]
+  conf <- getConfig source
+  liftIO $ writeFile conf (unlines [userName, password])
 
 data Event = Event UI.Event | Hi | Hello | Goodbye
 
@@ -120,9 +121,10 @@ loginEvent state@State {..} event = case event of
 
   Event (UI.EvKey UI.KEnter []) -> case currentEditor of
     PasswordEditor -> do
-      let [userName] = UI.getEditContents userNameEditor
-      let [password] = UI.getEditContents passwordEditor
       let sourceType = viewType musicSource
+      let [userName] = UI.getEditContents userNameEditor
+      let [password] = case sourceType of
+             NetEaseMusic -> NetEase.encryptPassword <$> UI.getEditContents passwordEditor
       session <- case sourceType of
         NetEaseMusic -> do
           session <- NetEase.initSession True
