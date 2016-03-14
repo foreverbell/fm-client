@@ -14,8 +14,6 @@ import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Extra as UI
 
-import           UI.Types
-
 import           Control.Concurrent.Chan (Chan, newChan, writeChan)
 import           Control.Exception (SomeException, try)
 import           Control.Monad (void)
@@ -26,6 +24,8 @@ import           System.Directory (createDirectoryIfMissing, getHomeDirectory)
 
 import qualified FM.NetEase as NetEase
 import           FM.FM (runSessionOnly)
+import           SessionManager
+import           Types
 
 -- | TODO: Encrypt password in some ways.
 readLoginConfig :: MusicSourceType -> IO (String, String)
@@ -54,6 +54,7 @@ data State = State {
 , userNameEditor :: UI.Editor
 , passwordEditor :: UI.Editor
 , musicSource    :: MusicSource
+, sessionManager :: SessionManager
 , onOhayou       :: Bool
 , uiTitle        :: String
 , chan           :: Chan Event
@@ -95,14 +96,22 @@ loginEvent state@State {..} event = case event of
     UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
 
   OhayouWithSmile -> do
-    session <- liftIO $ try $ case viewType musicSource of
-      NetEaseMusic -> do
-        (userName, password) <- readLoginConfig (viewType musicSource)
-        session <- NetEase.initSession True
-        liftIO $ runSessionOnly session (NetEase.login userName password)
-        return session
+    let sourceType = viewType musicSource
+    session <- liftIO $ try $ do
+      mSession <- lookupSession sessionManager sourceType
+      case mSession of
+        Just session -> return session
+        Nothing -> do
+          (userName, password) <- readLoginConfig sourceType
+          session <- case sourceType of
+            NetEaseMusic -> do
+              session <- NetEase.initSession True
+              liftIO $ runSessionOnly session (NetEase.login userName password)
+              return session
+          insertSession sessionManager sourceType session
+          return session
     case session of
-      Left (_ :: SomeException) -> UI.continue state { onOhayou = False }
+      Left (_ :: SomeException) -> deleteSession sessionManager sourceType >> UI.continue state { onOhayou = False }
       Right session -> UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
 
   Oyasumi -> UI.halt state
@@ -113,12 +122,14 @@ loginEvent state@State {..} event = case event of
     PasswordEditor -> do
       let [userName] = UI.getEditContents userNameEditor
       let [password] = UI.getEditContents passwordEditor
-      session <- case viewType musicSource of
+      let sourceType = viewType musicSource
+      session <- case sourceType of
         NetEaseMusic -> do
           session <- NetEase.initSession True
           liftIO $ runSessionOnly session (NetEase.login userName password)
           return session
-      liftIO $ writeLoginConfig (viewType musicSource) (userName, password)
+      liftIO $ writeLoginConfig sourceType (userName, password)
+      insertSession sessionManager sourceType session
       UI.suspendAndResume $ continuation session >> writeChan chan Oyasumi >> return state
     UserNameEditor -> UI.continue $ switchEditor state
 
@@ -143,23 +154,24 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appLiftVtyEvent = Event
                   }
 
-loginCPS :: String -> MusicSource -> (SomeSession -> IO ()) -> IO ()
-loginCPS title source cont = do
+loginCPS :: String -> MusicSource -> SessionManager -> (SomeSession -> IO ()) -> IO ()
+loginCPS title source manager cont = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   chan <- newChan
-  if requireLogin NetEaseFM
+  if requireLogin source
      then writeChan chan OhayouWithSmile
      else writeChan chan Ohayou
   void $ UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
                                                           , userNameEditor = editor1
                                                           , passwordEditor = editor2
                                                           , musicSource = source
+                                                          , sessionManager = manager
                                                           , onOhayou = True
                                                           , uiTitle = title
                                                           , chan = chan
                                                           , continuation = cont
                                                           }
 
-login :: String -> MusicSource -> ContT () IO SomeSession
-login title source = ContT (loginCPS title source)
+login :: String -> MusicSource -> SessionManager -> ContT () IO SomeSession
+login title source manager = ContT (loginCPS title source manager)

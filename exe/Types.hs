@@ -1,4 +1,4 @@
-module UI.Types (
+module Types (
   MusicSource (..)
 , MusicSourceType (..)
 , viewType
@@ -13,9 +13,10 @@ data MusicSource = NetEaseFM
                  | NetEaseDailyRecommendation
                  | NetEasePlayLists
                  | NetEasePlayList Int String
-  deriving (Eq)
+  deriving (Eq, Ord)
 
 data MusicSourceType = NetEaseMusic
+  deriving (Eq, Ord)
 
 instance Show MusicSource where
   show NetEaseFM = "NetEase Cloud Music FM"

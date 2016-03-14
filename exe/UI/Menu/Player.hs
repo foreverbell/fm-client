@@ -11,8 +11,6 @@ import qualified Brick.Widgets.Core as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Extra as UI
 
-import           UI.Types
-
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.Chan (writeChan, newChan)
 import           Control.Concurrent.STM.TVar
@@ -31,6 +29,8 @@ import           FM.FM
 import qualified FM.Song as Song
 import qualified FM.Player as Player
 import qualified FM.NetEase as NetEase
+import           Types
+
 
 data State = State {
   session       :: SomeSession

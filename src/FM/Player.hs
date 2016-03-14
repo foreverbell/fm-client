@@ -79,8 +79,8 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
   lyricsAsync <- liftIO $ async $ fetchLyrics song
 
   let
-    notify :: Song.Lyrics -> Double -> Notify String -> IO Song.Lyrics
-    notify (Song.Lyrics lyrics) time notify = Song.Lyrics <$> 
+    notifyLyrics :: Song.Lyrics -> Double -> Notify String -> IO Song.Lyrics
+    notifyLyrics (Song.Lyrics lyrics) time notify = Song.Lyrics <$> 
       case span (\l -> fst l <= time) lyrics of
         ([], restLyrics) -> return restLyrics
         (curLyrics, restLyrics) -> do
@@ -99,11 +99,11 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
       let cur' = read (words out !! 3)
       when (floor cur' /= floor cur) $ onProgress (len, cur')
       lyrics' <- case lyrics of
-        Just lyrics -> Just <$> notify lyrics cur' onLyrics
+        Just lyrics -> Just <$> notifyLyrics lyrics cur' onLyrics
         Nothing -> do
           lyrics <- poll lyricsAsync
           case lyrics of
-            Just (Right lyrics) -> Just <$> notify lyrics cur' onLyrics
+            Just (Right lyrics) -> Just <$> notifyLyrics lyrics cur' onLyrics
             _ -> return Nothing
       loop False (len, cur', lyrics') =<< hGetLine outHandle
 

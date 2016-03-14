@@ -11,11 +11,11 @@ import qualified Brick.Widgets.Core as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Extra as UI
 
-import           UI.Types
-
 import           Control.Monad (void)
 import           Control.Monad.Cont (ContT (..))
 import qualified Data.Sequence as S
+
+import           Types
 
 data State = State {
   sourceSequence :: S.Seq MusicSource

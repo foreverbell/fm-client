@@ -1,5 +1,5 @@
 name:                fm-client
-version:             1.0.0.0
+version:             1.0.0.1
 synopsis:            FM Client.
 homepage:            http://github.com/foreverbell/fm-client#readme
 license:             BSD3
@@ -65,9 +65,10 @@ executable fm
                      , vty
                      , fm-client
   other-modules:
+    SessionManager
+    Types
     UI.Black
     UI.Extra
     UI.Login
     UI.Menu.Player
     UI.Menu.Source
-    UI.Types

@@ -5,16 +5,19 @@ import Control.Monad.Cont
 import           FM.FM
 import qualified FM.NetEase as NetEase
 
-import           UI.Types
 import qualified UI.Black as Black
 import qualified UI.Login as Login
 import qualified UI.Menu.Source as Menu
 import qualified UI.Menu.Player as Menu
 
+import           SessionManager
+import           Types
+
 main :: IO ()
 main = flip runContT id $ do
+  manager <- liftIO newSessionManager
   source <- Menu.sourceMenu [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists ]
-  session <- Login.login "NetEase Login" source
+  session <- Login.login "NetEase Login" source manager
   case source of
     NetEasePlayLists -> do
       playLists <- liftIO $ Black.black (runSessionOnly session NetEase.fetchPlayLists) return
