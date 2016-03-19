@@ -70,5 +70,5 @@ executable fm
     UI.Black
     UI.Extra
     UI.Login
-    UI.Menu.Player
-    UI.Menu.Source
+    UI.Menu
+    UI.Player

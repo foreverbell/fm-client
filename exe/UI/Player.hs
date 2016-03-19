@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings #-}
 
-module UI.Menu.Player (
-  playerMenu
+module UI.Player (
+  musicPlayer
 ) where
 
 import qualified Brick.Main as UI
@@ -30,7 +30,6 @@ import qualified FM.Song as Song
 import qualified FM.Player as Player
 import qualified FM.NetEase as NetEase
 import           Types
-
 
 data State = State {
   session       :: SomeSession
@@ -134,8 +133,8 @@ decreaseVolume state@State {..} d = do
   liftPlayer state (Player.setVolume vol)
   return state { volume = vol }
 
-playerMenuDraw :: State -> [UI.Widget]
-playerMenuDraw State {..} = [ui]
+musicPlayerDraw :: State -> [UI.Widget]
+musicPlayerDraw State {..} = [ui]
   where
     formatSong Song.Song {..} = printf "%s - %s - %s" title (intercalate " / " artists) album :: String
 
@@ -169,8 +168,8 @@ playerMenuDraw State {..} = [ui]
                  | otherwise = UI.mkWhite . UI.str . UI.mkUnfocused
       return $ mkItem (show index ++ ". " ++ formatSong song)
 
-playerMenuEvent :: State -> Event -> UI.EventM (UI.Next State)
-playerMenuEvent state@State {..} event = case event of
+musicPlayerEvent :: State -> Event -> UI.EventM (UI.Next State)
+musicPlayerEvent state@State {..} event = case event of
   UserEventFetchMore -> UI.continue =<< fetchMore state
 
   UserEventPending -> do
@@ -193,7 +192,7 @@ playerMenuEvent state@State {..} event = case event of
        then UI.halt state
        else UI.continue =<< stop state
 
-  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> playerMenuEvent state (VtyEvent (UI.EvKey UI.KEnter []))
+  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> musicPlayerEvent state (VtyEvent (UI.EvKey UI.KEnter []))
   VtyEvent (UI.EvKey UI.KEnter []) -> do
     pstate <- liftIO $ atomically $ readTVar (playerState player)
     UI.continue =<< case pstate of
@@ -227,17 +226,17 @@ playerMenuEvent state@State {..} event = case event of
 
   _ -> UI.continue state
 
-playerMenuApp :: UI.App State Event
-playerMenuApp = UI.App { UI.appDraw = playerMenuDraw
+musicPlayerApp :: UI.App State Event
+musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
                        , UI.appStartEvent = return
-                       , UI.appHandleEvent = playerMenuEvent
+                       , UI.appHandleEvent = musicPlayerEvent
                        , UI.appAttrMap = const UI.defaultAttributeMap
                        , UI.appLiftVtyEvent = VtyEvent
                        , UI.appChooseCursor = UI.neverShowCursor
                        }
 
-playerMenuCPS :: MusicSource -> SomeSession -> IO ()
-playerMenuCPS source session = do
+musicPlayerCPS :: MusicSource -> SomeSession -> IO ()
+musicPlayerCPS source session = do
   player <- initPlayer
   chan <- newChan
   let postEvent = writeChan chan
@@ -255,7 +254,7 @@ playerMenuCPS source session = do
                     , pendingMasked = True
                     }
   postEvent UserEventFetchMore
-  void $ UI.customMain (UI.mkVty def) chan playerMenuApp state
+  void $ UI.customMain (UI.mkVty def) chan musicPlayerApp state
 
-playerMenu :: MusicSource -> SomeSession -> ContT () IO (IO ())
-playerMenu source session = ContT (const $ playerMenuCPS source session)
+musicPlayer :: MusicSource -> SomeSession -> ContT () IO (IO ())
+musicPlayer source session = ContT (const $ musicPlayerCPS source session)

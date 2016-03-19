@@ -1,5 +1,6 @@
 module Types (
-  MusicSource (..)
+  Show1 (..)
+, MusicSource (..)
 , MusicSourceType (..)
 , viewType
 , requireLogin
@@ -7,6 +8,9 @@ module Types (
 ) where
 
 import FM.Session
+
+class Show1 a where
+  show1 :: a -> String
 
 data MusicSource = NetEaseFM
                  | NetEasePublicFM
@@ -18,15 +22,15 @@ data MusicSource = NetEaseFM
 data MusicSourceType = NetEaseMusic
   deriving (Eq, Ord)
 
-instance Show MusicSource where
-  show NetEaseFM = "NetEase Cloud Music FM"
-  show NetEasePublicFM = "NetEase Cloud Music FM (Public)"
-  show NetEaseDailyRecommendation = "NetEase Cloud Music Daily Recommendation"
-  show NetEasePlayLists = "NetEase Cloud Music Play List"
-  show (NetEasePlayList _ title) = title
+instance Show1 MusicSource where
+  show1 NetEaseFM = "NetEase Cloud Music FM"
+  show1 NetEasePublicFM = "NetEase Cloud Music FM (Public)"
+  show1 NetEaseDailyRecommendation = "NetEase Cloud Music Daily Recommendation"
+  show1 NetEasePlayLists = "NetEase Cloud Music Play List"
+  show1 (NetEasePlayList _ title) = title
 
-instance Show MusicSourceType where
-  show NetEaseMusic = "net-ease"
+instance Show1 MusicSourceType where
+  show1 NetEaseMusic = "net-ease"
 
 viewType :: MusicSource -> MusicSourceType
 viewType _ = NetEaseMusic

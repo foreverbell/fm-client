@@ -32,7 +32,7 @@ getConfig :: (MonadIO m) => MusicSourceType -> m String
 getConfig source = do
   dir <- (++ "/.fm") <$> liftIO getHomeDirectory
   liftIO $ createDirectoryIfMissing True dir
-  return $ dir ++ "/" ++ show source ++ ".conf"
+  return $ dir ++ "/" ++ show1 source ++ ".conf"
 
 readLoginConfig :: (MonadIO m) => MusicSourceType -> m (String, String)
 readLoginConfig source = do
