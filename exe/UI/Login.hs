@@ -154,8 +154,8 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appLiftVtyEvent = Event
                   }
 
-loginCPS :: String -> MusicSource -> SessionManager -> (SomeSession -> IO ()) -> IO ()
-loginCPS title source manager cont = do
+loginCont :: String -> MusicSource -> SessionManager -> (SomeSession -> IO ()) -> IO ()
+loginCont title source manager continuation = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   chan <- newChan
@@ -170,8 +170,8 @@ loginCPS title source manager cont = do
                                                           , onGreetings = True
                                                           , uiTitle = title
                                                           , chan = chan
-                                                          , continuation = cont
+                                                          , continuation = continuation
                                                           }
 
 login :: String -> MusicSource -> SessionManager -> ContT () IO SomeSession
-login title source manager = ContT (loginCPS title source manager)
+login title source manager = ContT (loginCont title source manager)

@@ -1,6 +1,7 @@
 module Main where
 
-import Control.Monad.Cont
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Cont
 
 import           FM.FM
 import qualified FM.NetEase as NetEase
@@ -14,13 +15,13 @@ import           SessionManager
 import           Types
 
 main :: IO ()
-main = flip runContT id $ do
+main = evalContT $ do
   manager <- liftIO newSessionManager
-  source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists ] "Select Source"
-  session <- Login.login "NetEase Login" source manager
+  source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists ] Nothing "Select Source"
+  session <- Login.login "Login" source manager
   case source of
     NetEasePlayLists -> do
       playLists <- liftIO $ Black.black (runSessionOnly session NetEase.fetchPlayLists) return
-      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] "Select Play List"
+      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing "Select Play List"
       Player.musicPlayer source session
     _ -> Player.musicPlayer source session

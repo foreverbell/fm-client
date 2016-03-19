@@ -24,17 +24,21 @@ import           Data.Foldable (toList)
 import           Data.List (intercalate)
 import qualified Data.Sequence as S
 import           Text.Printf (printf)
+import           System.Random (randomRIO)
 
 import           FM.FM
 import qualified FM.Song as Song
 import qualified FM.Player as Player
 import qualified FM.NetEase as NetEase
+
+import           UI.Menu
 import           Types
 
 data State = State {
   session       :: SomeSession
 , player        :: Player
 , source        :: MusicSource
+, playOrder     :: PlayOrder
 , playSequence  :: S.Seq Song.Song
 , onStopped     :: Bool
 , currentIndex  :: Int
@@ -158,7 +162,7 @@ musicPlayerDraw State {..} = [ui]
       where 
         (len, cur) = progress
         ratio = if len == 0 then 0 else cur / len
-        bar = 25 :: Int
+        bar = 35 :: Int
         blocks = ceiling $ fromIntegral bar * ratio
 
     lyricsBar = UI.mkRed $ UI.hCenter $ UI.str $ if null lyrics then " " else lyrics
@@ -174,29 +178,32 @@ musicPlayerEvent state@State {..} event = case event of
   UserEventFetchMore -> UI.continue =<< fetchMore state
 
   UserEventPending -> do
-    pstate <- liftIO $ atomically $ readTVar (playerState player)
-    if pendingMasked && isPlaying pstate
+    pState <- liftIO $ atomically $ readTVar (playerState player)
+    if pendingMasked && isPlaying pState
       then UI.continue state
       else do
-        state@State {..} <- if currentIndex == S.length playSequence
-                               then fetchMore state
-                               else return state
-        UI.continue =<< play state { currentIndex = min (S.length playSequence) (currentIndex + 1) }
+        state@State {..} <- if needMore then fetchMore state else return state
+        nextIndex <- case playOrder of
+          Stream -> return $ min (S.length playSequence) (currentIndex + 1)
+          LoopOne -> return currentIndex
+          LoopAll -> return $ if currentIndex + 1 >= S.length playSequence then 1 else currentIndex + 1
+          Shuffle -> liftIO $ randomRIO (1, S.length playSequence)
+        UI.continue =<< play state { currentIndex = nextIndex }
 
   UserEventUpdateProgress p -> UI.continue state { progress = p }
 
   UserEventUpdateLyrics l -> UI.continue state { lyrics = l }
 
   VtyEvent (UI.EvKey UI.KEsc []) -> do
-    pstate <- liftIO $ atomically $ readTVar (playerState player)
-    if isStopped pstate
+    pState <- liftIO $ atomically $ readTVar (playerState player)
+    if isStopped pState
        then UI.halt state
        else UI.continue =<< stop state
 
-  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> musicPlayerEvent state (VtyEvent (UI.EvKey UI.KEnter []))
+  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> musicPlayerEvent state (VtyEvent $ UI.EvKey UI.KEnter [])
   VtyEvent (UI.EvKey UI.KEnter []) -> do
-    pstate <- liftIO $ atomically $ readTVar (playerState player)
-    UI.continue =<< case pstate of
+    pState <- liftIO $ atomically $ readTVar (playerState player)
+    UI.continue =<< case pState of
       Playing _ -> if currentIndex == focusedIndex
         then pause state
         else do
@@ -212,9 +219,7 @@ musicPlayerEvent state@State {..} event = case event of
   VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 0 (focusedIndex - 1) } 
 
   VtyEvent (UI.EvKey UI.KDown []) -> do
-    state@State {..} <- if focusedIndex == S.length playSequence
-                          then liftIO (fetchMore state)
-                          else return state
+    state@State {..} <- if needMore then liftIO (fetchMore state) else return state
     UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) } 
 
   VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< decreaseVolume state 10
@@ -225,7 +230,15 @@ musicPlayerEvent state@State {..} event = case event of
 
   VtyEvent (UI.EvKey (UI.KChar '+') []) -> UI.continue =<< increaseVolume state 20
 
+  VtyEvent (UI.EvKey (UI.KChar 'z') []) -> UI.suspendAndResume $ do
+    newPlayOrder <- menuSelection_ [minBound .. maxBound] (Just playOrder) "Select Play Order"
+    return $ case newPlayOrder of
+      Just newPlayOrder -> state { playOrder = newPlayOrder }
+      Nothing -> state
+
   _ -> UI.continue state
+
+  where needMore = currentIndex == S.length playSequence && playOrder == Stream
 
 musicPlayerApp :: UI.App State Event
 musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
@@ -236,14 +249,15 @@ musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
                         , UI.appChooseCursor = UI.neverShowCursor
                         }
 
-musicPlayerCPS :: MusicSource -> SomeSession -> a -> IO ()
-musicPlayerCPS source session _ = do
+musicPlayer_ :: MusicSource -> SomeSession -> IO ()
+musicPlayer_ source session = do
   player <- initPlayer
   chan <- newChan
   let postEvent = writeChan chan
   let state = State { session = session
                     , player = player
                     , source = source
+                    , playOrder = defaultPlayOrder source
                     , playSequence = S.empty
                     , onStopped = True
                     , currentIndex = 0
@@ -257,5 +271,5 @@ musicPlayerCPS source session _ = do
   postEvent UserEventFetchMore
   void $ UI.customMain (UI.mkVty def) chan musicPlayerApp state
 
-musicPlayer :: MusicSource -> SomeSession -> ContT () IO (IO ())
-musicPlayer source session = ContT (musicPlayerCPS source session)
+musicPlayer :: MusicSource -> SomeSession -> ContT () IO ()
+musicPlayer source session = ContT (const $ musicPlayer_ source session)

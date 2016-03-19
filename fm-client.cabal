@@ -1,5 +1,5 @@
 name:                fm-client
-version:             0.1.0.2
+version:             0.1.0.3
 synopsis:            FM Client.
 homepage:            http://github.com/foreverbell/fm-client#readme
 license:             BSD3
@@ -59,6 +59,7 @@ executable fm
                      , mtl
                      , directory
                      , stm
+                     , random
                      , containers
                      , data-default-class
                      , brick
