@@ -27,7 +27,6 @@ import           FM.FM (runSessionOnly)
 import           SessionManager
 import           Types
 
--- | TODO: Encrypt password in some ways.
 getConfig :: (MonadIO m) => MusicSourceType -> m String
 getConfig source = do
   dir <- (++ "/.fm") <$> liftIO getHomeDirectory
@@ -80,9 +79,8 @@ switchEditor state@State {..} = state { currentEditor = newEditor }
 loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
-    black = UI.str []
     ui = UI.vCenter $ if onGreetings
-            then black
+            then UI.str []
             else UI.vBox [ UI.mkYellow $ UI.hCenter $ UI.str uiTitle
                          , UI.separator
                          , UI.hCenter $ UI.str "username: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)

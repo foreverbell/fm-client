@@ -58,11 +58,13 @@ menuSelectionApp = UI.App { UI.appDraw = menuSelectionDraw
                           }
 
 menuSelectionCPS :: (Show1 a) => [a] -> String -> (a -> IO ()) -> IO ()
-menuSelectionCPS menu title cont = void $ UI.defaultMain menuSelectionApp $ State { menuSequence = S.fromList menu
-                                                                                  , uiTitle = title
-                                                                                  , currentIndex = 0
-                                                                                  , continuation = cont
-                                                                                  }
+menuSelectionCPS menu title cont = void $ UI.defaultMain menuSelectionApp state
+  where
+    state = State { menuSequence = S.fromList menu
+                  , uiTitle = title 
+                  , currentIndex = 0 
+                  , continuation = cont
+                  }
 
 menuSelection :: (Show1 a) => [a] -> String -> ContT () IO a
 menuSelection menu title = ContT (menuSelectionCPS menu title)

@@ -66,6 +66,7 @@ fetch state@State {..} = case source of
   NetEasePlayLists -> undefined
   NetEasePlayList id _ -> liftSession state (NetEase.fetchPlayList id)
 
+-- TODO: check musicSource in fetchLyrics / star / unstar / trash
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state song = liftSession state (NetEase.fetchLyrics song)
 
@@ -228,15 +229,15 @@ musicPlayerEvent state@State {..} event = case event of
 
 musicPlayerApp :: UI.App State Event
 musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
-                       , UI.appStartEvent = return
-                       , UI.appHandleEvent = musicPlayerEvent
-                       , UI.appAttrMap = const UI.defaultAttributeMap
-                       , UI.appLiftVtyEvent = VtyEvent
-                       , UI.appChooseCursor = UI.neverShowCursor
-                       }
+                        , UI.appStartEvent = return
+                        , UI.appHandleEvent = musicPlayerEvent
+                        , UI.appAttrMap = const UI.defaultAttributeMap
+                        , UI.appLiftVtyEvent = VtyEvent
+                        , UI.appChooseCursor = UI.neverShowCursor
+                        }
 
-musicPlayerCPS :: MusicSource -> SomeSession -> IO ()
-musicPlayerCPS source session = do
+musicPlayerCPS :: MusicSource -> SomeSession -> a -> IO ()
+musicPlayerCPS source session _ = do
   player <- initPlayer
   chan <- newChan
   let postEvent = writeChan chan
@@ -257,4 +258,4 @@ musicPlayerCPS source session = do
   void $ UI.customMain (UI.mkVty def) chan musicPlayerApp state
 
 musicPlayer :: MusicSource -> SomeSession -> ContT () IO (IO ())
-musicPlayer source session = ContT (const $ musicPlayerCPS source session)
+musicPlayer source session = ContT (musicPlayerCPS source session)
