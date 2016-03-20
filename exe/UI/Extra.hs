@@ -18,7 +18,7 @@ import           Data.Default.Class
 import qualified Graphics.Vty as V
 
 mkFocused :: String -> String
-mkFocused = (++) "-> "
+mkFocused = (++) "~> "
 
 mkUnfocused :: String -> String
 mkUnfocused = (++) "   "

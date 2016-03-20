@@ -2,10 +2,10 @@ module Types (
   Show1 (..)
 , MusicSource (..)
 , MusicSourceType (..)
-, PlayOrder (..)
+, PlayMode (..)
 , viewType
 , requireLogin
-, defaultPlayOrder
+, defaultPlayMode
 , module FM.Session
 ) where
 
@@ -24,7 +24,7 @@ data MusicSource = NetEaseFM
 data MusicSourceType = NetEaseMusic
   deriving (Eq, Ord)
 
-data PlayOrder = Stream | LoopOne | LoopAll | Shuffle
+data PlayMode = Stream | LoopOne | LoopAll | Shuffle
   deriving (Eq, Ord, Enum, Bounded)
 
 instance Show1 MusicSource where
@@ -37,11 +37,11 @@ instance Show1 MusicSource where
 instance Show1 MusicSourceType where
   show1 NetEaseMusic = "NetEase"
 
-instance Show1 PlayOrder where
-  show1 Stream = "Stream"
+instance Show1 PlayMode where
+  show1 Stream  = "Stream"
   show1 LoopOne = "Loop One"
   show1 LoopAll = "Loop All"
-  show1 Shuffle = "Shuffle"
+  show1 Shuffle = "Random Shuffle"
 
 viewType :: MusicSource -> MusicSourceType
 viewType _ = NetEaseMusic
@@ -50,7 +50,7 @@ requireLogin :: MusicSource -> Bool
 requireLogin NetEasePublicFM = False
 requireLogin _ = True
 
-defaultPlayOrder :: MusicSource -> PlayOrder
-defaultPlayOrder NetEaseFM = Stream
-defaultPlayOrder NetEasePublicFM = Stream
-defaultPlayOrder _ = LoopAll
+defaultPlayMode :: MusicSource -> PlayMode
+defaultPlayMode NetEaseFM = Stream
+defaultPlayMode NetEasePublicFM = Stream
+defaultPlayMode _ = LoopAll

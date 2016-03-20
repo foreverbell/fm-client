@@ -38,14 +38,14 @@ data State = State {
   session       :: SomeSession
 , player        :: Player
 , source        :: MusicSource
-, playOrder     :: PlayOrder
+, playMode      :: PlayMode
 , playSequence  :: S.Seq Song.Song
 , onStopped     :: Bool
 , currentIndex  :: Int
 , focusedIndex  :: Int
 , volume        :: Int
 , progress      :: (Double, Double)
-, lyrics        :: String 
+, currentLyrics :: String 
 , postEvent     :: Event -> IO ()
 , pendingMasked :: Bool
 }
@@ -105,7 +105,7 @@ play state@State {..}
       return state { focusedIndex = currentIndex
                    , onStopped = False
                    , progress = (0, 0)
-                   , lyrics = [] 
+                   , currentLyrics = [] 
                    , pendingMasked = False }
 
 pause :: (MonadIO m) => State -> m State
@@ -123,7 +123,7 @@ stop state = do
   liftPlayer state Player.stop
   return state { onStopped = True
                , progress = (0, 0)
-               , lyrics = []
+               , currentLyrics = []
                , pendingMasked = True }
 
 increaseVolume :: (MonadIO m) => State -> Int -> m State
@@ -145,8 +145,10 @@ musicPlayerDraw State {..} = [ui]
 
     formatTime time = printf "%02d:%02d" minute second :: String
       where (minute, second) = floor time `quotRem` 60 :: (Int, Int)
+    
+    makeProgressBar c total occupied = replicate occupied c ++ replicate (total - occupied) ' '
 
-    ui = UI.vBox [UI.separator, title , UI.separator, progressBar, UI.separator, lyricsBar, UI.separator, player]
+    ui = UI.vBox [UI.separator, title , UI.separator, bar1, bar2, UI.separator, lyrics, UI.separator, player]
 
     title = UI.hCenter $ UI.hBox [UI.mkRed $ UI.str star, UI.mkYellow $ UI.str body]
       where 
@@ -156,16 +158,20 @@ musicPlayerDraw State {..} = [ui]
             song = playSequence `S.index` (currentIndex - 1)
             star = chr 9829 : "  "
 
-    progressBar | onStopped = UI.separator
-                | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ 
-                    printf "[%s%s] (%s/%s)" (replicate blocks '>') (replicate (bar - blocks) ' ') (formatTime cur) (formatTime len)
+    bar1 | onStopped = UI.separator
+         | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ printf "[%s] (%s/%s)" (makeProgressBar '>' total occupied) (formatTime cur) (formatTime len)
       where 
         (len, cur) = progress
         ratio = if len == 0 then 0 else cur / len
-        bar = 35 :: Int
-        blocks = ceiling $ fromIntegral bar * ratio
+        total = 35 :: Int
+        occupied = ceiling $ fromIntegral total * ratio
 
-    lyricsBar = UI.mkRed $ UI.hCenter $ UI.str $ if null lyrics then " " else lyrics
+    bar2 = UI.mkGreen $ UI.hCenter $ UI.str $ printf "[Mode: %s] [Vol: %s]" (show1 playMode) (makeProgressBar '|' total occupied)
+      where
+        total = 10 :: Int
+        occupied = total * volume `div` 100
+
+    lyrics = UI.mkRed $ UI.hCenter $ UI.str $ if null currentLyrics then " " else currentLyrics
 
     player = UI.viewport "vp" UI.Vertical $ UI.hCenter $ UI.vBox $ do
       (song, index) <- zip (toList playSequence) [1 .. ]
@@ -182,8 +188,9 @@ musicPlayerEvent state@State {..} event = case event of
     if pendingMasked && isPlaying pState
       then UI.continue state
       else do
+        let needMore = currentIndex == S.length playSequence && playMode == Stream
         state@State {..} <- if needMore then fetchMore state else return state
-        nextIndex <- case playOrder of
+        nextIndex <- case playMode of
           Stream -> return $ min (S.length playSequence) (currentIndex + 1)
           LoopOne -> return currentIndex
           LoopAll -> return $ if currentIndex + 1 >= S.length playSequence then 1 else currentIndex + 1
@@ -192,7 +199,7 @@ musicPlayerEvent state@State {..} event = case event of
 
   UserEventUpdateProgress p -> UI.continue state { progress = p }
 
-  UserEventUpdateLyrics l -> UI.continue state { lyrics = l }
+  UserEventUpdateLyrics l -> UI.continue state { currentLyrics = l }
 
   VtyEvent (UI.EvKey UI.KEsc []) -> do
     pState <- liftIO $ atomically $ readTVar (playerState player)
@@ -219,6 +226,7 @@ musicPlayerEvent state@State {..} event = case event of
   VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 0 (focusedIndex - 1) } 
 
   VtyEvent (UI.EvKey UI.KDown []) -> do
+    let needMore = focusedIndex == S.length playSequence && playMode == Stream
     state@State {..} <- if needMore then liftIO (fetchMore state) else return state
     UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) } 
 
@@ -230,15 +238,13 @@ musicPlayerEvent state@State {..} event = case event of
 
   VtyEvent (UI.EvKey (UI.KChar '+') []) -> UI.continue =<< increaseVolume state 20
 
-  VtyEvent (UI.EvKey (UI.KChar 'z') []) -> UI.suspendAndResume $ do
-    newPlayOrder <- menuSelection_ [minBound .. maxBound] (Just playOrder) "Select Play Order"
-    return $ case newPlayOrder of
-      Just newPlayOrder -> state { playOrder = newPlayOrder }
+  VtyEvent (UI.EvKey (UI.KChar 'm') []) -> UI.suspendAndResume $ do
+    newPlayMode <- menuSelection_ [minBound .. maxBound] (Just playMode) "Select Mode"
+    return $ case newPlayMode of
+      Just newPlayMode -> state { playMode = newPlayMode }
       Nothing -> state
 
   _ -> UI.continue state
-
-  where needMore = currentIndex == S.length playSequence && playOrder == Stream
 
 musicPlayerApp :: UI.App State Event
 musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
@@ -257,14 +263,14 @@ musicPlayer_ source session = do
   let state = State { session = session
                     , player = player
                     , source = source
-                    , playOrder = defaultPlayOrder source
+                    , playMode = defaultPlayMode source
                     , playSequence = S.empty
                     , onStopped = True
                     , currentIndex = 0
                     , focusedIndex = 0
                     , volume = 100
                     , progress = (0, 0)
-                    , lyrics = []
+                    , currentLyrics = []
                     , postEvent = postEvent
                     , pendingMasked = True
                     }
