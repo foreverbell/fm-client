@@ -28,20 +28,20 @@ data PlayMode = Stream | LoopOne | LoopAll | Shuffle
   deriving (Eq, Ord, Enum, Bounded)
 
 instance Show1 MusicSource where
-  show1 NetEaseFM = "NetEase Cloud Music FM"
-  show1 NetEasePublicFM = "NetEase Cloud Music FM (Public)"
-  show1 NetEaseDailyRecommendation = "NetEase Cloud Music Daily Recommendation"
-  show1 NetEasePlayLists = "NetEase Cloud Music Play List"
+  show1 NetEaseFM = "网易云音乐私人兆赫"
+  show1 NetEasePublicFM = "网易云音乐公共兆赫"
+  show1 NetEaseDailyRecommendation = "网易云音乐每日歌曲推荐"
+  show1 NetEasePlayLists = "网易云音乐歌单"
   show1 (NetEasePlayList _ title) = title
 
 instance Show1 MusicSourceType where
   show1 NetEaseMusic = "NetEase"
 
 instance Show1 PlayMode where
-  show1 Stream  = "Stream"
-  show1 LoopOne = "Loop One"
-  show1 LoopAll = "Loop All"
-  show1 Shuffle = "Random Shuffle"
+  show1 Stream  = "流"
+  show1 LoopOne = "单曲循环"
+  show1 LoopAll = "列表循环"
+  show1 Shuffle = "随机播放"
 
 viewType :: MusicSource -> MusicSourceType
 viewType _ = NetEaseMusic

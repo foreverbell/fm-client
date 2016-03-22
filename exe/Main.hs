@@ -17,11 +17,11 @@ import           Types
 main :: IO ()
 main = evalContT $ do
   manager <- liftIO newSessionManager
-  source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists ] Nothing "Select Source"
-  session <- Login.login "Login" source manager
+  source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists ] Nothing "播放源"
+  session <- Login.login "登陆" source manager
   case source of
     NetEasePlayLists -> do
       playLists <- liftIO $ Black.black (runSessionOnly session NetEase.fetchPlayLists) return
-      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing "Select Play List"
+      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing "歌单"
       Player.musicPlayer source session
     _ -> Player.musicPlayer source session

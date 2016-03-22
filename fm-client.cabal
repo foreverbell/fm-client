@@ -1,6 +1,6 @@
 name:                fm-client
 version:             0.1.0.3
-synopsis:            FM Client.
+synopsis:            NetEase Cloud Music FM client.
 homepage:            http://github.com/foreverbell/fm-client#readme
 license:             BSD3
 license-file:        LICENSE
