@@ -57,7 +57,7 @@ data Session = Session {
 
 instance IsSession Session
 
-data HTTPMethod = Post | Get | PostCookies
+data HTTPMethod = Post | Get | PostAndSaveCookies
 
 data NetEaseException = NetEaseHTTPException HTTP.HttpException
                       | NetEaseStatusCodeException Int (HTTP.Response String)
@@ -82,7 +82,7 @@ sendRequest :: (MonadIO m, IsQuery q) => Session -> HTTPMethod -> String -> q ->
 sendRequest Session {..} method url query = liftIO $ case method of
     Get -> catch get (throwM . NetEaseHTTPException)
     Post -> catch (post False) (throwM . NetEaseHTTPException)
-    PostCookies -> catch (post True) (throwM . NetEaseHTTPException)
+    PostAndSaveCookies -> catch (post True) (throwM . NetEaseHTTPException)
   where
     initRequest request = do
       cookies <- liftIO $ readIORef sessionCookies
@@ -185,7 +185,7 @@ login userName password = do
                     , ("password", JSON.toJSON $ BS8.pack password)
                     , ("rememberLogin", JSON.toJSON False)
                     ]
-  body <- sendRequest session PostCookies loginURL request
+  body <- sendRequest session PostAndSaveCookies loginURL request
   liftIO $ checkJSON (decodeUserId body) (writeIORef (sessionUserId session))
 
 fetchFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]

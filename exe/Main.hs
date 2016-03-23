@@ -22,6 +22,6 @@ main = evalContT $ do
   case source of
     NetEasePlayLists -> do
       playLists <- liftIO $ Black.black (runSessionOnly session NetEase.fetchPlayLists) return
-      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing "歌单"
+      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing (show1 NetEasePlayLists)
       Player.musicPlayer source session
     _ -> Player.musicPlayer source session

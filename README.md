@@ -13,8 +13,13 @@ $ sudo apt-get install mpg123
 ## 快捷键
 
 <table>
+	<tr> <td>Space / Enter</td> <td>确认 / 播放 / 暂停</td> </tr>
 	<tr> <td>ESC</td> <td>停止 / 返回上一级菜单</td> </tr>
 	<tr> <td>m</td> <td>播放模式选择</td> </tr>
 	<tr> <td>-</td> <td>减小音量</td> </tr>
 	<tr> <td>=</td> <td>增大音量</td> </tr>
 </table>
+
+## TODO
+
+TBD: 支持 douban.fm。

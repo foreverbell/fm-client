@@ -31,7 +31,7 @@ instance Show1 MusicSource where
   show1 NetEaseFM = "网易云音乐私人兆赫"
   show1 NetEasePublicFM = "网易云音乐公共兆赫"
   show1 NetEaseDailyRecommendation = "网易云音乐每日歌曲推荐"
-  show1 NetEasePlayLists = "网易云音乐歌单"
+  show1 NetEasePlayLists = "网易云音乐用户歌单"
   show1 (NetEasePlayList _ title) = title
 
 instance Show1 MusicSourceType where

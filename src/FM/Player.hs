@@ -21,10 +21,9 @@ import           Control.Concurrent.STM.TVar
 
 import           Control.Exception (asyncExceptionFromException, AsyncException (..))
 import           Control.Monad.STM (atomically)
-import           Data.List (isPrefixOf)
 
 import           System.IO
-import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess)
+import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess, terminateProcess)
 
 import qualified FM.Song as Song
 
@@ -88,12 +87,12 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
           return restLyrics
 
     loop :: Bool -> (Double, Double, Maybe Song.Lyrics) -> String -> IO ()
+    loop _ (len, cur, _) "@P 0" = onProgress (len, cur)
+
     loop True _ out@('@':'F':_) = do
       let len = read (words out !! 4)
       onProgress (len, 0)
       loop False (len, 0, Nothing) =<< hGetLine outHandle
-
-    loop True ctx _ = loop True ctx =<< hGetLine outHandle
 
     loop False (len, cur, lyrics) out@('@':'F':_) = do
       let cur' = read (words out !! 3)
@@ -107,9 +106,7 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
             _ -> return Nothing
       loop False (len, cur', lyrics') =<< hGetLine outHandle
 
-    loop False ctx@(l, c, _) out
-      | "@P 0" `isPrefixOf` out = onProgress (l, c)
-      | otherwise = loop False ctx =<< hGetLine outHandle
+    loop b ctx _ = loop b ctx =<< hGetLine outHandle
 
     playerThread = do
       atomically $ putTMVar exitLock ()
@@ -119,7 +116,7 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
 
     cleanUp e = do
       PlayerContext {..} <- atomically $ readTMVar playerContext
-      hPutStrLn inHandle "Q"
+      terminateProcess processHandle
       waitForProcess processHandle
       cancel lyricsAsync
       atomically $ do
