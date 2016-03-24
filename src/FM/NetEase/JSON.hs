@@ -126,8 +126,7 @@ newtype UserId = UserId Int
 
 instance JSON.FromJSON UserId where
   parseJSON = onObject $ \v -> v .: "account" >>= parse
-    where
-      parse = onObject $ \v -> UserId <$> (v .: "id")
+    where parse = onObject $ \v -> UserId <$> (v .: "id")
 
 decodeUserId :: BS.ByteString -> Either String Int
 decodeUserId bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
