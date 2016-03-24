@@ -4,6 +4,7 @@ module FM.NetEase.Crypto (
   toHex
 , encryptAES
 , encryptRSA
+, encryptSongId
 , encryptPassword
 ) where
 
@@ -11,10 +12,12 @@ import qualified Crypto.Error as C
 import qualified Crypto.Cipher.AES as C
 import qualified Crypto.Cipher.Types as C
 import qualified Crypto.Hash as C
+import           Data.Bits (xor)
+import qualified Data.ByteArray as BA
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Base64 as Base64
-import           Data.Char (ord)
+import           Data.Char (chr, ord)
 import           Data.Maybe (fromJust)
 import           Numeric (showHex)
 
@@ -48,6 +51,17 @@ encryptRSA text = zfill 256 $ toHex $ (base^publicKey) `mod` modulo
                            , "6594216629258349130257685001248"
                            , "172188325316586707301643237607"
                            ] :: Integer
+
+encryptSongId :: String -> String
+encryptSongId id = flip map hashValue $ 
+  \c -> case c of
+    '/' -> '_'
+    '+' -> '-'
+    c -> c
+  where
+    key = map ord "3go8&$8*3*3h0k(2)2"
+    bytes = zipWith xor (map ord id) (concat (repeat key))
+    hashValue = BS8.unpack $ Base64.encode $ BS.pack $ BA.unpack $ C.hashWith C.MD5 $ BS8.pack $ map chr bytes
 
 encryptPassword :: String -> String
 encryptPassword = show . C.hashWith C.MD5 . BS8.pack

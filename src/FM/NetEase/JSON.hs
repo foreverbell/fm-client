@@ -10,9 +10,9 @@ module FM.NetEase.JSON (
 , decodeUserId
 ) where
 
-import           Control.Monad (mzero)
+import           Control.Monad (msum, mzero, forM)
 import qualified Data.Aeson as JSON
-import           Data.Aeson ((.:))
+import           Data.Aeson ((.:), (.:?))
 import qualified Data.Aeson.Encode as JSON
 import qualified Data.Aeson.Types as JSON
 import qualified Data.ByteString as BS
@@ -21,8 +21,10 @@ import qualified Data.ByteString.Builder as BB
 import qualified Data.Text as T
 import           Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vector as V
+import           Text.Printf (printf)
 
 import qualified FM.Song as Song
+import           FM.NetEase.Crypto (encryptSongId)
 
 instance JSON.ToJSON BS.ByteString where
   toJSON = JSON.String . decodeUtf8
@@ -30,50 +32,57 @@ instance JSON.ToJSON BS.ByteString where
 encodeJSON :: JSON.Value -> BS.ByteString
 encodeJSON = BL.toStrict . BB.toLazyByteString . JSON.encodeToBuilder
 
+onObject :: (JSON.Object -> JSON.Parser a) -> JSON.Value -> JSON.Parser a
+onObject f (JSON.Object o) = f o
+onObject _ _ = mzero
+
+onArray :: (JSON.Array -> JSON.Parser a) -> JSON.Value -> JSON.Parser a
+onArray f (JSON.Array a) = f a
+onArray _ _ = mzero
+
 newtype FM = FM [Song.Song]
 newtype Recommend = Recommend [Song.Song]
 newtype PlayList = PlayList [Song.Song]
 
 instance JSON.FromJSON FM where
-  parseJSON (JSON.Object v) = FM <$> (v .: "data" >>= parseSongList)
-  parseJSON _ = mzero
+  parseJSON = onObject $ \v -> FM <$> (v .: "data" >>= parseSongList)
 
 instance JSON.FromJSON Recommend where
-  parseJSON (JSON.Object v) = Recommend <$> (v .: "recommend" >>= parseSongList)
-  parseJSON _ = mzero
+  parseJSON = onObject $ \v ->  Recommend <$> (v .: "recommend" >>= parseSongList)
 
 instance JSON.FromJSON PlayList where
-  parseJSON (JSON.Object v) = PlayList <$> (v .: "result" >>= parse)
-    where
-      parse (JSON.Object v) = v .: "tracks" >>= parseSongList
-      parse _ = mzero
-  parseJSON _ = mzero
+  parseJSON = onObject $ \v -> PlayList <$> (v .: "result" >>= parse)
+    where parse = onObject $ \v -> v .: "tracks" >>= parseSongList
 
 parseSongList :: JSON.Value -> JSON.Parser [Song.Song]
-parseSongList (JSON.Array v) = mapM parseSong (V.toList v)
-parseSongList _ = mzero
+parseSongList = onArray $ \v -> mapM parseSong (V.toList v)
 
 parseSong :: JSON.Value -> JSON.Parser Song.Song
-parseSong (JSON.Object v) = do
-  starred <- v .: "starred"
-  url <- v .: "mp3Url"
+parseSong = onObject $ \v -> do
+  url <- do
+    urls <- forM ["hMusic", "mMusic", "lMusic"] $ \m -> do
+      node <- v .:? m
+      case node of
+        Just node -> flip onObject node $ \v -> do
+          dfsId <- v .: "dfsId" :: JSON.Parser Int
+          let encId = encryptSongId (show dfsId)
+          return $ Just (printf "http://m1.music.126.net/%s/%d.mp3" encId dfsId)
+        Nothing -> return Nothing
+    case msum urls of
+      Just url -> return url
+      Nothing -> v .: "mp3Url"
   title <- v .: "name"
   uid <- v .: "id"
   artists <- parseArtists =<< (v .: "artists")
   album <- parseAlbum =<< (v .: "album")
+  starred <- v .: "starred"
   return Song.Song {..}
-parseSong _ = mzero
 
 parseArtists :: JSON.Value -> JSON.Parser [String]
-parseArtists (JSON.Array v) = mapM parseOne (V.toList v)
-  where
-    parseOne (JSON.Object v) = v .: "name"
-    parseOne _ = mzero
-parseArtists _ = mzero
+parseArtists = onArray $ \v -> forM (V.toList v) (onObject $ \v -> v .: "name")
 
 parseAlbum :: JSON.Value -> JSON.Parser String
-parseAlbum (JSON.Object v) = v .: "name"
-parseAlbum _ = mzero
+parseAlbum = onObject $ \v -> v .: "name"
 
 decodeFM :: BS.ByteString -> Either String [Song.Song]
 decodeFM bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
@@ -90,17 +99,14 @@ decodePlayList bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
 newtype PlayLists = PlayLists [(Int, String)]
 
 instance JSON.FromJSON PlayLists where
-  parseJSON (JSON.Object v) = PlayLists <$> (v .: "playlist" >>= parse)
+  parseJSON = onObject $ \v -> PlayLists <$> (v .: "playlist" >>= parse)
     where
-      parse (JSON.Array v) = mapM parsePlayLists (V.toList v)
+      parse = onArray $ \v -> mapM parsePlayLists (V.toList v)
         where
-          parsePlayLists (JSON.Object v) = do
+          parsePlayLists = onObject $ \v -> do
             id <- v .: "id"
             name <- v .: "name"
             return (id, name)
-          parsePlayLists _ = mzero
-      parse _ = mzero
-  parseJSON _ = mzero
 
 decodePlayLists :: BS.ByteString -> Either String [(Int, String)]
 decodePlayLists bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
@@ -109,11 +115,8 @@ decodePlayLists bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
 newtype Lyrics = Lyrics [String]
 
 instance JSON.FromJSON Lyrics where
-  parseJSON (JSON.Object v) = v .: "lrc" >>= parse
-    where
-      parse (JSON.Object v) = Lyrics . lines . T.unpack <$> (v .: "lyric")
-      parse _ = mzero
-  parseJSON _ = mzero
+  parseJSON = onObject $ \v -> v .: "lrc" >>= parse
+    where parse = onObject $ \v -> Lyrics . lines . T.unpack <$> (v .: "lyric")
 
 decodeLyrics :: BS.ByteString -> Either String [String]
 decodeLyrics bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
@@ -122,11 +125,9 @@ decodeLyrics bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
 newtype UserId = UserId Int
 
 instance JSON.FromJSON UserId where
-  parseJSON (JSON.Object v) = v .: "account" >>= parse
+  parseJSON = onObject $ \v -> v .: "account" >>= parse
     where
-      parse (JSON.Object v) = UserId <$> (v .: "id")
-      parse _ = mzero
-  parseJSON _ = mzero
+      parse = onObject $ \v -> UserId <$> (v .: "id")
 
 decodeUserId :: BS.ByteString -> Either String Int
 decodeUserId bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)

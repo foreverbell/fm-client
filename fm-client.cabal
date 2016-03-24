@@ -31,6 +31,7 @@ library
                      , transformers
                      , vector
                      , bytestring
+                     , memory
                      , text
                      , parsec
                      , http-client
