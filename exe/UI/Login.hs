@@ -159,9 +159,7 @@ loginCont title source manager continuation = do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   chan <- newChan
-  if requireLogin source
-     then writeChan chan Hello
-     else writeChan chan Hi
+  writeChan chan $ if requireLogin source then Hello else Hi
   void $ UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
                                                           , userNameEditor = editor1
                                                           , passwordEditor = editor2

@@ -17,7 +17,7 @@ test = void $ do
   player <- initPlayer
   [username, password] <- take 2 . lines <$> liftIO (readFile "passport")
   fm <- runSessionOnly session $ do
-    login username password
+    login username (encryptPassword password)
     fetchFM
   mapM print fm
   lyrics <- runSessionOnly session $ fetchLyrics (fm !! 0)

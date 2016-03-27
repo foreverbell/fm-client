@@ -10,18 +10,17 @@ module FM.Player (
 , resume
 , stop
 , setVolume
+, mute
 ) where
 
-import           Control.Monad.IO.Class
-import           Control.Monad.Reader
 import           Control.Concurrent (ThreadId, forkFinally, killThread, myThreadId, throwTo)
 import           Control.Concurrent.Async (async, cancel, poll)
 import           Control.Concurrent.STM.TMVar
 import           Control.Concurrent.STM.TVar
-
 import           Control.Exception (asyncExceptionFromException, AsyncException (..))
+import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import           Control.Monad.STM (atomically)
-
 import           System.IO
 import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess, terminateProcess)
 
@@ -54,12 +53,14 @@ data PlayerContext = PlayerContext {
 data Player = Player {
   playerContext :: TMVar PlayerContext
 , playerState   :: TVar PlayerState
+, stoppedSignal :: TMVar ()
 }
 
 initPlayer :: (MonadIO m) => m Player
 initPlayer = liftIO $ do
   playerContext <- newEmptyTMVarIO
   playerState <- newTVarIO Stopped
+  stoppedSignal <- newTMVarIO ()
   return Player {..}
 
 type FetchLyrics = Song.Song -> IO Song.Lyrics
@@ -127,12 +128,14 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
         Left e -> case asyncExceptionFromException e of
                     Just ThreadKilled -> onTerminate False
                     _ -> throwTo parentThreadId e
+      atomically $ putTMVar stoppedSignal ()
 
   parentThreadId <- liftIO myThreadId
   childThreadId <- liftIO $ forkFinally playerThread cleanUp
   void $ liftIO $ atomically $ do
     putTMVar playerContext PlayerContext {..}
     writeTVar playerState (Playing song)
+    takeTMVar stoppedSignal
     takeTMVar exitLock
 
 -- | pause, resume and stop are idempotent.
@@ -167,9 +170,13 @@ stop = do
     _ -> liftIO $ do
       PlayerContext {..} <- atomically $ readTMVar playerContext
       killThread childThreadId
+      atomically $ readTMVar stoppedSignal
 
 setVolume :: (MonadIO m, MonadReader Player m) => Int -> m ()
 setVolume volume = do
   Player {..} <- ask
   h <- fmap inHandle <$> liftIO (atomically $ tryReadTMVar playerContext)
   maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show volume)) h
+
+mute :: (MonadIO m, MonadReader Player m) => m ()
+mute = setVolume 0
