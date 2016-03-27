@@ -9,9 +9,6 @@ module FM.NetEase (
 , fetchRecommend
 , fetchPlayLists
 , fetchPlayList
-, star
-, unstar
-, trash
 , fetchLyrics
 ) where
 
@@ -132,10 +129,7 @@ initSession sessionSecure = do
   sessionCookies <- liftIO $ newIORef (HTTP.createCookieJar [])
   return $ SomeSession Session {..}
 
-data NetEaseQuery = Star Song.SongId 
-                  | Unstar Song.SongId
-                  | Trash Song.SongId
-                  | FetchLyrics Song.SongId
+data NetEaseQuery = FetchLyrics Song.SongId
                   | FetchPlayLists Int
                   | FetchPlayList Int
                   | EncryptData BS.ByteString BS.ByteString
@@ -144,20 +138,11 @@ instance IsQuery NetEaseQuery where
   fromQuery (EncryptData text key) = HTTP.renderSimpleQuery False 
     [ ("params", text), ("encSecKey", key) ]
 
-  fromQuery (Star id) = HTTP.renderSimpleQuery False 
-    [ ("alg", "itembased"), ("trackId", BS8.pack (show id)), ("like", "true"), ("time", "25") ]
-
-  fromQuery (Unstar id) = HTTP.renderSimpleQuery False 
-    [ ("alg", "itembased"), ("trackId", BS8.pack (show id)), ("like", "false"), ("time", "25") ]
-
-  fromQuery (Trash id) = HTTP.renderSimpleQuery False 
-    [ ("alg", "RT"), ("songId", BS8.pack (show id)), ("time", "25") ]
-
   fromQuery (FetchLyrics id) = HTTP.renderSimpleQuery False 
     [ ("os", "osx"), ("id", BS8.pack (show id)), ("lv", "-1"), ("kv", "-1"), ("tv", "-1") ]
 
   fromQuery (FetchPlayLists uid) = HTTP.renderSimpleQuery False 
-    [ ("offset", "0"), ("limit", "100"), ("uid", BS8.pack (show uid)) ]
+    [ ("offset", "0"), ("limit", "1000"), ("uid", BS8.pack (show uid)) ]
 
   fromQuery (FetchPlayList id) = HTTP.renderSimpleQuery False 
     [ ("id", BS8.pack (show id)) ]
@@ -226,23 +211,8 @@ fetchPlayList :: (MonadIO m, MonadReader Session m) => Int -> m [Song.Song]
 fetchPlayList id = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/playlist/detail" (FetchPlayList id)
+  liftIO $ writeFile "/home/foreverbell/test.json" $ BS8.unpack body
   liftIO $ checkJSON (decodePlayList body) return
-
--- | TODO: test star, unstar, trash
-star :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()
-star Song.Song {..} = do
-  session <- ask
-  void $ sendRequest session Get "http://music.163.com/api/radio/like" (Star uid)
-
-unstar :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()
-unstar Song.Song {..} = do
-  session <- ask
-  void $ sendRequest session Get "http://music.163.com/api/radio/like" (Unstar uid)
-
-trash :: (MonadIO m, MonadReader Session m) => Song.Song -> m ()
-trash Song.Song {..} = do
-  session <- ask
-  void $ sendRequest session Get "http://music.163.com/api/radio/trash/add" (Trash uid)
 
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do

@@ -27,7 +27,7 @@ test = void $ do
         putStrLn $ if b then "normally exit" else "user interrupt"
         putMVar signal ()
   runPlayerOnly player $ do
-    play (fm !! 0) 100 (runSessionOnly session . fetchLyrics) onTerminate print putStrLn
+    play (fm !! 0) (runSessionOnly session . fetchLyrics) onTerminate print putStrLn
     liftIO $ delay 5
     pause
     liftIO $ delay 1

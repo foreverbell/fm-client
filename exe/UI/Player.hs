@@ -17,7 +17,6 @@ import           Control.Monad (void, when)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import           Control.Monad.Cont (ContT (..))
 import           Control.Monad.STM (atomically)
-import           Data.Char (chr)
 import           Data.Default.Class
 import           Data.Foldable (toList)
 import           Data.List (intercalate)
@@ -133,13 +132,10 @@ musicPlayerDraw State {..} = [ui]
     
     ui = UI.vBox [UI.separator, title , UI.separator, bar1, UI.separator, bar2, UI.separator, lyrics, UI.separator, playList]
 
-    title = UI.hCenter $ UI.hBox [UI.mkRed $ UI.str star, UI.mkYellow $ UI.str body]
+    title = UI.mkYellow $ UI.hCenter $ UI.str body
       where 
-        (body, star) | stopped = ("[停止]", [])
-                     | otherwise = (formatSong song, if Song.starred song then star else [])
-          where 
-            song = playSequence `S.index` (currentIndex - 1)
-            star = chr 9829 : "  "
+        body | stopped = "[停止]"
+             | otherwise = formatSong $ playSequence `S.index` (currentIndex - 1)
 
     bar1 | stopped = UI.separator
          | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ printf "[%s] (%s/%s)" (make '>' total occupied) (formatTime cur) (formatTime len)
@@ -244,7 +240,7 @@ musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
                         }
 
 musicPlayer_ :: MusicSource -> SomeSession -> IO ()
-musicPlayer_ source session = do
+musicPlayer_ source session = void $ do
   player <- initPlayer
   chan <- newChan
   let postEvent = writeChan chan
@@ -262,7 +258,7 @@ musicPlayer_ source session = do
                     , pendingMasked = True
                     }
   postEvent UserEventFetchMore
-  void $ UI.customMain (UI.mkVty def) chan musicPlayerApp state
+  UI.customMain (UI.mkVty def) chan musicPlayerApp state
 
 musicPlayer :: MusicSource -> SomeSession -> ContT () IO ()
 musicPlayer source session = ContT (const $ musicPlayer_ source session)

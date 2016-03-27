@@ -14,6 +14,7 @@ module FM.Player (
 
 import           Control.Concurrent (ThreadId, forkFinally, killThread, myThreadId, throwTo)
 import           Control.Concurrent.Async (async, cancel, poll)
+import           Control.Concurrent.STM.Lock
 import           Control.Concurrent.STM.TMVar
 import           Control.Concurrent.STM.TVar
 import           Control.Exception (asyncExceptionFromException, AsyncException (..))
@@ -54,7 +55,7 @@ data Player = Player {
 , playerState   :: TVar PlayerState
 , playerVolume  :: Int
 , playerMuted   :: Bool
-, stoppedSignal :: TMVar ()
+, playerLock    :: Lock
 }
 
 initPlayer :: (MonadIO m) => m Player
@@ -63,7 +64,7 @@ initPlayer = liftIO $ do
   playerState <- newTVarIO Stopped
   let playerVolume = 100
   let playerMuted = False
-  stoppedSignal <- newTMVarIO ()
+  playerLock <- newLockIO
   return Player {..}
 
 type FetchLyrics = Song.Song -> IO Song.Lyrics
@@ -78,7 +79,7 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
         hSetBuffering h LineBuffering
   initHandle inHandle
   initHandle outHandle
-  exitLock <- liftIO $ atomically $ newTMVar ()
+  exitLock <- liftIO $ newAcquiredLockIO
   lyricsAsync <- liftIO $ async $ fetchLyrics song
 
   let
@@ -113,7 +114,7 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
     loop b ctx _ = loop b ctx =<< hGetLine outHandle
 
     playerThread = do
-      atomically $ putTMVar exitLock ()
+      atomically $ acquireLock exitLock
       hPutStrLn inHandle $ "V " ++ show (if playerMuted then 0 else playerVolume)
       hPutStrLn inHandle $ "L " ++ url
       loop True (0, 0, Nothing) =<< hGetLine outHandle
@@ -131,15 +132,15 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
         Left e -> case asyncExceptionFromException e of
                     Just ThreadKilled -> onTerminate False
                     _ -> throwTo parentThreadId e
-      atomically $ putTMVar stoppedSignal ()
+      atomically $ releaseLock playerLock
 
   parentThreadId <- liftIO myThreadId
   childThreadId <- liftIO $ forkFinally playerThread cleanUp
   void $ liftIO $ atomically $ do
     putTMVar playerContext PlayerContext {..}
     writeTVar playerState (Playing song)
-    takeTMVar stoppedSignal
-    takeTMVar exitLock
+    acquireLock playerLock
+    releaseLock exitLock
 
 -- | pause, resume and stop are idempotent.
 pause :: (MonadIO m, MonadReader Player m) => m ()
@@ -173,7 +174,7 @@ stop = do
     _ -> liftIO $ do
       PlayerContext {..} <- atomically $ readTMVar playerContext
       killThread childThreadId
-      atomically $ readTMVar stoppedSignal
+      atomically $ waitLock playerLock
 
 updateVolume :: (MonadIO m, MonadReader Player m) => m ()
 updateVolume = do

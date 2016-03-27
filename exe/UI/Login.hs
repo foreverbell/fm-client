@@ -14,7 +14,7 @@ import qualified Brick.Widgets.Edit as UI
 import qualified Graphics.Vty as UI
 import qualified UI.Extra as UI
 
-import           Control.Concurrent.Chan (Chan, newChan, writeChan)
+import           Control.Concurrent.Chan (newChan, writeChan)
 import           Control.Exception (SomeException, try)
 import           Control.Monad (void)
 import           Control.Monad.IO.Class (MonadIO, liftIO)
@@ -57,7 +57,7 @@ data State = State {
 , sessionManager :: SessionManager
 , onGreetings    :: Bool
 , uiTitle        :: String
-, chan           :: Chan Event
+, postEvent      :: Event -> IO ()
 , continuation   :: SomeSession -> IO ()
 }
 
@@ -92,7 +92,7 @@ loginEvent state@State {..} event = case event of
   Hi -> do
     session <- case viewType musicSource of
       NetEaseMusic -> NetEase.initSession True
-    UI.suspendAndResume $ continuation session >> writeChan chan Goodbye >> return state
+    UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
 
   Hello -> do
     let sourceType = viewType musicSource
@@ -111,7 +111,7 @@ loginEvent state@State {..} event = case event of
           return session
     case session of
       Left (_ :: SomeException) -> deleteSession sessionManager sourceType >> UI.continue state { onGreetings = False }
-      Right session -> UI.suspendAndResume $ continuation session >> writeChan chan Goodbye >> return state
+      Right session -> UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
 
   Goodbye -> UI.halt state
 
@@ -130,7 +130,7 @@ loginEvent state@State {..} event = case event of
           return session
       liftIO $ writeLoginConfig sourceType (userName, password)
       insertSession sessionManager sourceType session
-      UI.suspendAndResume $ continuation session >> writeChan chan Goodbye >> return state
+      UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
     UserNameEditor -> UI.continue $ switchEditor state
 
   Event (UI.EvKey (UI.KChar '\t') []) -> UI.continue $ switchEditor state
@@ -155,21 +155,22 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   }
 
 loginCont :: String -> MusicSource -> SessionManager -> (SomeSession -> IO ()) -> IO ()
-loginCont title source manager continuation = do
+loginCont title source manager continuation = void $ do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   chan <- newChan
-  writeChan chan $ if requireLogin source then Hello else Hi
-  void $ UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
-                                                          , userNameEditor = editor1
-                                                          , passwordEditor = editor2
-                                                          , musicSource = source
-                                                          , sessionManager = manager
-                                                          , onGreetings = True
-                                                          , uiTitle = title
-                                                          , chan = chan
-                                                          , continuation = continuation
-                                                          }
+  let postEvent = writeChan chan
+  postEvent $ if requireLogin source then Hello else Hi
+  UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
+                                                   , userNameEditor = editor1
+                                                   , passwordEditor = editor2
+                                                   , musicSource = source
+                                                   , sessionManager = manager
+                                                   , onGreetings = True
+                                                   , uiTitle = title
+                                                   , postEvent = postEvent
+                                                   , continuation = continuation
+                                                   }
 
 login :: String -> MusicSource -> SessionManager -> ContT () IO SomeSession
 login title source manager = ContT (loginCont title source manager)

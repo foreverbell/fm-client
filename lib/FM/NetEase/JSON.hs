@@ -75,7 +75,6 @@ parseSong = onObject $ \v -> do
   uid <- v .: "id"
   artists <- parseArtists =<< (v .: "artists")
   album <- parseAlbum =<< (v .: "album")
-  starred <- v .: "starred"
   return Song.Song {..}
 
 parseArtists :: JSON.Value -> JSON.Parser [String]
