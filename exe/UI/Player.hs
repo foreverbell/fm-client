@@ -178,7 +178,7 @@ musicPlayerEvent state@State {..} event = case event of
         nextIndex <- case playMode of
           Stream -> return $ min (S.length playSequence) (currentIndex + 1)
           LoopOne -> return currentIndex
-          LoopAll -> return $ if currentIndex + 1 >= S.length playSequence then 1 else currentIndex + 1
+          LoopAll -> return $ if currentIndex + 1 > S.length playSequence then 1 else currentIndex + 1
           Shuffle -> liftIO $ randomRIO (1, S.length playSequence)
         UI.continue =<< play state { currentIndex = nextIndex }
 
