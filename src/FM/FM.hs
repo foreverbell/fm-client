@@ -7,7 +7,7 @@ module FM.FM (
 , initPlayer
 , PlayerState (..)
 , Player
-, playerState
+, playerState, playerVolume, playerMuted
 , isPlaying, isPaused, isStopped
 ) where
 

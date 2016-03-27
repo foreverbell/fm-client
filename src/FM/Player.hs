@@ -9,8 +9,7 @@ module FM.Player (
 , pause
 , resume
 , stop
-, setVolume
-, mute
+, updateVolume
 ) where
 
 import           Control.Concurrent (ThreadId, forkFinally, killThread, myThreadId, throwTo)
@@ -53,6 +52,8 @@ data PlayerContext = PlayerContext {
 data Player = Player {
   playerContext :: TMVar PlayerContext
 , playerState   :: TVar PlayerState
+, playerVolume  :: Int
+, playerMuted   :: Bool
 , stoppedSignal :: TMVar ()
 }
 
@@ -60,14 +61,16 @@ initPlayer :: (MonadIO m) => m Player
 initPlayer = liftIO $ do
   playerContext <- newEmptyTMVarIO
   playerState <- newTVarIO Stopped
+  let playerVolume = 100
+  let playerMuted = False
   stoppedSignal <- newTMVarIO ()
   return Player {..}
 
 type FetchLyrics = Song.Song -> IO Song.Lyrics
 type Notify a = a -> IO ()
 
-play :: (MonadIO m, MonadReader Player m) => Song.Song -> Int -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
-play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
+play :: (MonadIO m, MonadReader Player m) => Song.Song -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
+play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
   Player {..} <- ask
   (inHandle, outHandle, _, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
@@ -111,7 +114,7 @@ play song@Song.Song {..} volume fetchLyrics onTerminate onProgress onLyrics = do
 
     playerThread = do
       atomically $ putTMVar exitLock ()
-      hPutStrLn inHandle $ "V " ++ show volume
+      hPutStrLn inHandle $ "V " ++ show (if playerMuted then 0 else playerVolume)
       hPutStrLn inHandle $ "L " ++ url
       loop True (0, 0, Nothing) =<< hGetLine outHandle
 
@@ -172,11 +175,9 @@ stop = do
       killThread childThreadId
       atomically $ readTMVar stoppedSignal
 
-setVolume :: (MonadIO m, MonadReader Player m) => Int -> m ()
-setVolume volume = do
+updateVolume :: (MonadIO m, MonadReader Player m) => m ()
+updateVolume = do
   Player {..} <- ask
   h <- fmap inHandle <$> liftIO (atomically $ tryReadTMVar playerContext)
-  maybe (return ()) (\h -> liftIO (hPutStrLn h $ "V " ++ show volume)) h
-
-mute :: (MonadIO m, MonadReader Player m) => m ()
-mute = setVolume 0
+  let v = if playerMuted then 0 else playerVolume
+  liftIO $ maybe (return ()) (\h -> hPutStrLn h $ "V " ++ show v) h

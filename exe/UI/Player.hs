@@ -39,11 +39,9 @@ data State = State {
 , source        :: MusicSource
 , playMode      :: PlayMode
 , playSequence  :: S.Seq Song.Song
-, stopped     :: Bool
+, stopped       :: Bool
 , currentIndex  :: Int
 , focusedIndex  :: Int
-, volume        :: Int
-, muted         :: Bool
 , progress      :: (Double, Double)
 , currentLyrics :: String 
 , postEvent     :: Event -> IO ()
@@ -86,7 +84,7 @@ play state@State {..}
       let onTerminate e = when e (postEvent (UserEventPending False))
       let onProgress p = postEvent (UserEventUpdateProgress p)
       let onLyrics l = postEvent (UserEventUpdateLyrics l)
-      liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) volume (fetchLyrics state) onTerminate onProgress onLyrics
+      liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) (fetchLyrics state) onTerminate onProgress onLyrics
       return state { focusedIndex = currentIndex
                    , stopped = False
                    , progress = (0, 0)
@@ -111,22 +109,19 @@ stop state = do
                , currentLyrics = []
                , pendingMasked = True }
 
-increaseVolume :: (MonadIO m) => State -> Int -> m State
-increaseVolume state@State {..} d = do
-  let vol = min 100 (volume + d)
-  liftPlayer state (Player.setVolume vol)
-  return state { volume = vol }
-
-decreaseVolume :: (MonadIO m) => State -> Int -> m State
-decreaseVolume state@State {..} d = do
-  let vol = max 0 (volume - d)
-  liftPlayer state (Player.setVolume vol)
-  return state { volume = vol }
+setVolume :: (MonadIO m) => State -> Int -> m State
+setVolume state@State {..} d = do
+  let newVolume = max 0 $ min 100 $ playerVolume player + d
+  let newState = state { player = player { playerVolume = newVolume } }
+  liftPlayer newState Player.updateVolume
+  return newState
 
 toggleMute :: (MonadIO m) => State -> m State
-toggleMute state@State {..} = case muted of
-  False -> liftPlayer state (Player.mute) >> return state { muted = True }
-  True -> liftPlayer state (Player.setVolume volume) >> return state { muted = False }
+toggleMute state@State {..} = do
+  let newMuted = not (playerMuted player)
+  let newState = state { player = player { playerMuted = newMuted } }
+  liftPlayer newState Player.updateVolume
+  return newState
 
 musicPlayerDraw :: State -> [UI.Widget]
 musicPlayerDraw State {..} = [ui]
@@ -136,7 +131,7 @@ musicPlayerDraw State {..} = [ui]
     formatTime time = printf "%02d:%02d" minute second :: String
       where (minute, second) = floor time `quotRem` 60 :: (Int, Int)
     
-    ui = UI.vBox [UI.separator, title , UI.separator, bar1, UI.separator, bar2, UI.separator, lyrics, UI.separator, player]
+    ui = UI.vBox [UI.separator, title , UI.separator, bar1, UI.separator, bar2, UI.separator, lyrics, UI.separator, playList]
 
     title = UI.hCenter $ UI.hBox [UI.mkRed $ UI.str star, UI.mkYellow $ UI.str body]
       where 
@@ -158,12 +153,12 @@ musicPlayerDraw State {..} = [ui]
     bar2 = UI.mkCyan $ UI.hCenter $ UI.str $ unwords [playModeBar, volumeBar]
       where
         playModeBar = printf "[播放模式: %s]" (show1 playMode)
-        volumeBar | muted = "[静音]"
-                  | otherwise = printf "[音量: %d%%]" volume
+        volumeBar | playerMuted player = "[静音]"
+                  | otherwise = printf "[音量: %d%%]" (playerVolume player)
 
     lyrics = UI.mkRed $ UI.hCenter $ UI.str $ if null currentLyrics then " " else currentLyrics
 
-    player = UI.viewport "vp" UI.Vertical $ UI.hCenter $ UI.vBox $ do
+    playList = UI.viewport "vp" UI.Vertical $ UI.hCenter $ UI.vBox $ do
       (song, index) <- zip (toList playSequence) [1 .. ]
       let mkItem | index == focusedIndex = UI.visible . UI.mkCyan . UI.str . UI.mkFocused
                  | otherwise = UI.mkWhite . UI.str . UI.mkUnfocused
@@ -220,9 +215,9 @@ musicPlayerEvent state@State {..} event = case event of
     state@State {..} <- if needMore then liftIO (fetchMore state) else return state
     UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) } 
 
-  VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< decreaseVolume state 10
+  VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< setVolume state (-10)
 
-  VtyEvent (UI.EvKey (UI.KChar '=') []) -> UI.continue =<< increaseVolume state 10
+  VtyEvent (UI.EvKey (UI.KChar '=') []) -> UI.continue =<< setVolume state 10
   
   VtyEvent (UI.EvKey (UI.KChar 'm') []) -> UI.continue =<< toggleMute state
   
@@ -261,8 +256,6 @@ musicPlayer_ source session = do
                     , stopped = True
                     , currentIndex = 0
                     , focusedIndex = 0
-                    , volume = 100
-                    , muted = False
                     , progress = (0, 0)
                     , currentLyrics = []
                     , postEvent = postEvent
