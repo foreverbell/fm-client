@@ -211,7 +211,6 @@ fetchPlayList :: (MonadIO m, MonadReader Session m) => Int -> m [Song.Song]
 fetchPlayList id = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/playlist/detail" (FetchPlayList id)
-  liftIO $ writeFile "/home/foreverbell/test.json" $ BS8.unpack body
   liftIO $ checkJSON (decodePlayList body) return
 
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
