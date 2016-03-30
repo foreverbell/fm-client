@@ -2,6 +2,7 @@ module Main where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Cont
+import           Data.IORef
 import           System.Directory (getHomeDirectory, createDirectoryIfMissing)
 
 import           FM.FM
@@ -12,7 +13,6 @@ import qualified UI.Login as Login
 import qualified UI.Menu as Menu
 import qualified UI.Player as Player
 
-import           SessionManager
 import           Types
 
 getCache :: IO FilePath
@@ -25,11 +25,11 @@ getCache = do
 
 main :: IO ()
 main = do
-  sessionManager <- newSessionManager
+  netEaseSession <- newIORef Nothing
   cache <- initCache =<< getCache
   evalContT $ do
     source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists, LocalCache ] Nothing "播放源"
-    session <- Login.login "登入" source sessionManager cache
+    session <- Login.login source netEaseSession cache
     case source of
       NetEasePlayLists -> do
         playLists <- liftIO $ Black.black Nothing (runSessionOnly session NetEase.fetchPlayLists) return

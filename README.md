@@ -26,7 +26,3 @@ $ fm
 	<tr> <td>=</td> <td>增大音量</td> </tr>
 	<tr> <td>m</td> <td>静音 / 取消静音</td> </tr>
 </table>
-
-## TODO
-
-TBD: 支持 douban.fm。

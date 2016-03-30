@@ -1,9 +1,7 @@
 module Types (
   Show1 (..)
 , MusicSource (..)
-, MusicSourceType (..)
 , PlayMode (..)
-, viewType
 , isLocal
 , requireLogin
 , defaultPlayMode
@@ -28,9 +26,6 @@ data MusicSource = NetEaseFM
                  | LocalCache
   deriving (Eq, Ord)
 
-data MusicSourceType = NetEaseMusic | LocalMusic
-  deriving (Eq, Ord)
-
 data PlayMode = Stream | LoopOne | LoopAll | Shuffle
   deriving (Eq, Ord, Enum, Bounded)
 
@@ -42,20 +37,11 @@ instance Show1 MusicSource where
   show1 (NetEasePlayList _ title) = title
   show1 LocalCache = "本地缓存"
 
-instance Show1 MusicSourceType where
-  show1 NetEaseMusic = "NetEase"
-  show1 LocalMusic = "Local"
-
 instance Show1 PlayMode where
   show1 Stream  = "流"
   show1 LoopOne = "单曲循环"
   show1 LoopAll = "列表循环"
   show1 Shuffle = "随机播放"
-
-viewType :: MusicSource -> MusicSourceType
-viewType LocalCache = LocalMusic
-viewType _ = NetEaseMusic
-
 
 isLocal :: MusicSource -> Bool
 isLocal LocalCache = True
