@@ -75,8 +75,7 @@ fetch state@State {..} = case source of
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state@State {..} song = case viewType source of
   NetEaseMusic -> liftSession state (NetEase.fetchLyrics song)
-  -- TODO: local lyrics
-  LocalMusic -> liftSession state (NetEase.fetchLyrics song)
+  LocalMusic -> return def -- TODO: local lyrics
 
 fetchMore :: (MonadIO m) => State -> m State
 fetchMore state@State {..} = do
