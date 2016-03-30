@@ -4,12 +4,18 @@ module Types (
 , MusicSourceType (..)
 , PlayMode (..)
 , viewType
+, isLocal
 , requireLogin
 , defaultPlayMode
-, module FM.Session
+
+, CacheOnly, SessionOnly, PlayerOnly
+, runCacheOnly, runSessionOnly, runPlayerOnly
+, Cache
+, IsSession, SomeSession (..)
+, Player, PlayerState (..), isStopped
 ) where
 
-import FM.Session
+import FM.FM
 
 class Show1 a where
   show1 :: a -> String
@@ -19,9 +25,10 @@ data MusicSource = NetEaseFM
                  | NetEaseDailyRecommendation
                  | NetEasePlayLists
                  | NetEasePlayList Int String
+                 | LocalCache
   deriving (Eq, Ord)
 
-data MusicSourceType = NetEaseMusic
+data MusicSourceType = NetEaseMusic | LocalMusic
   deriving (Eq, Ord)
 
 data PlayMode = Stream | LoopOne | LoopAll | Shuffle
@@ -33,9 +40,11 @@ instance Show1 MusicSource where
   show1 NetEaseDailyRecommendation = "网易云音乐每日歌曲推荐"
   show1 NetEasePlayLists = "网易云音乐用户歌单"
   show1 (NetEasePlayList _ title) = title
+  show1 LocalCache = "本地缓存"
 
 instance Show1 MusicSourceType where
   show1 NetEaseMusic = "NetEase"
+  show1 LocalMusic = "Local"
 
 instance Show1 PlayMode where
   show1 Stream  = "流"
@@ -44,9 +53,16 @@ instance Show1 PlayMode where
   show1 Shuffle = "随机播放"
 
 viewType :: MusicSource -> MusicSourceType
+viewType LocalCache = LocalMusic
 viewType _ = NetEaseMusic
 
+
+isLocal :: MusicSource -> Bool
+isLocal LocalCache = True
+isLocal _ = False
+
 requireLogin :: MusicSource -> Bool
+requireLogin LocalCache = False
 requireLogin NetEasePublicFM = False
 requireLogin _ = True
 

@@ -11,8 +11,6 @@ import Data.Typeable (Typeable, cast)
 
 class Typeable s => IsSession s
 
-instance IsSession ()
-
 data SomeSession = forall s. (IsSession s, Typeable s) => SomeSession s
   deriving (Typeable)
 

@@ -1,5 +1,5 @@
 name:                fm-client
-version:             1.0.5
+version:             1.1.0
 synopsis:            NetEase Cloud Music FM client.
 homepage:            http://github.com/foreverbell/fm-client#readme
 license:             BSD3
@@ -24,6 +24,7 @@ library
                      , time
                      , exceptions
                      , process
+                     , directory
                      , stm
                      , async
                      , data-default-class
@@ -41,15 +42,18 @@ library
                      , base64-bytestring
                      , cryptonite
   exposed-modules:
+    FM.Cache
     FM.FM
     FM.NetEase
-    FM.Player
-    FM.Session
     FM.Song
   other-modules:
     Control.Concurrent.STM.Lock
+    Data.Aeson.Extra
+    FM.CacheManager
     FM.NetEase.Crypto
     FM.NetEase.JSON
+    FM.Player
+    FM.Session
 
 executable fm
   hs-source-dirs:      exe

@@ -2,6 +2,7 @@ module Main where
 
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Cont
+import           System.Directory (getHomeDirectory, createDirectoryIfMissing)
 
 import           FM.FM
 import qualified FM.NetEase as NetEase
@@ -14,14 +15,25 @@ import qualified UI.Player as Player
 import           SessionManager
 import           Types
 
+getCache :: IO FilePath
+getCache = do
+  root <- (++ "/.fm") <$> getHomeDirectory
+  createDirectoryIfMissing True root
+  let cache = root ++ "/cache"
+  createDirectoryIfMissing True cache
+  return cache
+
 main :: IO ()
-main = evalContT $ do
-  manager <- liftIO newSessionManager
-  source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists ] Nothing "播放源"
-  session <- Login.login "登陆" source manager
-  case source of
-    NetEasePlayLists -> do
-      playLists <- liftIO $ Black.black (runSessionOnly session NetEase.fetchPlayLists) return
-      source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing (show1 NetEasePlayLists)
-      Player.musicPlayer source session
-    _ -> Player.musicPlayer source session
+main = do
+  sessionManager <- newSessionManager
+  cache <- initCache =<< getCache
+  evalContT $ do
+    source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists, LocalCache ] Nothing "播放源"
+    session <- Login.login "登入" source sessionManager cache
+    case source of
+      NetEasePlayLists -> do
+        playLists <- liftIO $ Black.black Nothing (runSessionOnly session NetEase.fetchPlayLists) return
+        source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing (show1 NetEasePlayLists)
+        Player.musicPlayer source session cache
+      _ -> Player.musicPlayer source session cache
+  Black.black (Just "缓存队列中有任务，缓存完毕后自动退出。") (waitCaching cache) return

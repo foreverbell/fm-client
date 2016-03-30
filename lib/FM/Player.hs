@@ -2,7 +2,7 @@
 
 module FM.Player (
   PlayerState (..)
-, isPlaying, isPaused, isStopped
+, isStopped
 , Player (..)
 , initPlayer
 , play
@@ -21,6 +21,7 @@ import           Control.Exception (asyncExceptionFromException, AsyncException 
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Monad.STM (atomically)
+import           Data.Maybe (isJust, fromJust)
 import           System.IO
 import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess, terminateProcess)
 
@@ -29,14 +30,6 @@ import qualified FM.Song as Song
 data PlayerState = Playing Song.Song
                  | Paused Song.Song
                  | Stopped
-
-isPlaying :: PlayerState -> Bool
-isPlaying (Playing _) = True
-isPlaying _ = False
-
-isPaused :: PlayerState -> Bool
-isPaused (Paused _) = True
-isPaused _ = False
 
 isStopped :: PlayerState -> Bool
 isStopped Stopped = True
@@ -51,7 +44,7 @@ data PlayerContext = PlayerContext {
 }
 
 data Player = Player {
-  playerContext :: TMVar PlayerContext
+  mpg123Context :: TMVar PlayerContext
 , playerState   :: TVar PlayerState
 , playerVolume  :: Int
 , playerMuted   :: Bool
@@ -60,7 +53,7 @@ data Player = Player {
 
 initPlayer :: (MonadIO m) => m Player
 initPlayer = liftIO $ do
-  playerContext <- newEmptyTMVarIO
+  mpg123Context <- newEmptyTMVarIO
   playerState <- newTVarIO Stopped
   let playerVolume = 100
   let playerMuted = False
@@ -79,7 +72,6 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
         hSetBuffering h LineBuffering
   initHandle inHandle
   initHandle outHandle
-  exitLock <- liftIO $ newAcquiredLockIO
   lyricsAsync <- liftIO $ async $ fetchLyrics song
 
   let
@@ -114,19 +106,18 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
     loop b ctx _ = loop b ctx =<< hGetLine outHandle
 
     playerThread = do
-      atomically $ acquireLock exitLock
+      atomically $ waitLock playerLock Acquired
       hPutStrLn inHandle $ "V " ++ show (if playerMuted then 0 else playerVolume)
       hPutStrLn inHandle $ "L " ++ url
       loop True (0, 0, Nothing) =<< hGetLine outHandle
 
     cleanUp e = do
-      PlayerContext {..} <- atomically $ readTMVar playerContext
+      PlayerContext {..} <- atomically $ do
+        writeTVar playerState Stopped
+        takeTMVar mpg123Context
+      cancel lyricsAsync
       terminateProcess processHandle
       waitForProcess processHandle
-      cancel lyricsAsync
-      atomically $ do
-        writeTVar playerState Stopped
-        takeTMVar playerContext
       case e of
         Right _ -> onTerminate True
         Left e -> case asyncExceptionFromException e of
@@ -137,48 +128,53 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
   parentThreadId <- liftIO myThreadId
   childThreadId <- liftIO $ forkFinally playerThread cleanUp
   void $ liftIO $ atomically $ do
-    putTMVar playerContext PlayerContext {..}
+    putTMVar mpg123Context PlayerContext {..}
     writeTVar playerState (Playing song)
     acquireLock playerLock
-    releaseLock exitLock
 
 -- | pause, resume and stop are idempotent.
 pause :: (MonadIO m, MonadReader Player m) => m ()
 pause = do
   Player {..} <- ask
-  state <- liftIO $ atomically $ readTVar playerState
-  case state of
-    Playing s -> liftIO $ do
-      PlayerContext {..} <- atomically $ readTMVar playerContext
-      atomically $ writeTVar playerState (Paused s)
-      hPutStrLn inHandle "P"
-    _ -> return ()
+  inHandle <- liftIO $ atomically $ do
+    state <- readTVar playerState
+    case state of
+      Playing s -> do
+        PlayerContext {..} <- readTMVar mpg123Context
+        writeTVar playerState (Paused s)
+        return $ Just inHandle
+      _ -> return Nothing
+  when (isJust inHandle) $ liftIO $ hPutStrLn (fromJust inHandle) "P"
 
 resume :: (MonadIO m, MonadReader Player m) => m ()
 resume = do
   Player {..} <- ask
-  state <- liftIO $ atomically $ readTVar playerState
-  case state of
-    Paused s -> liftIO $ do
-      PlayerContext {..} <- atomically $ readTMVar playerContext
-      atomically $ writeTVar playerState (Playing s)
-      hPutStrLn inHandle "P"
-    _ -> return ()
+  inHandle <- liftIO $ atomically $ do
+    state <- readTVar playerState
+    case state of
+      Paused s -> do
+        PlayerContext {..} <- readTMVar mpg123Context
+        writeTVar playerState (Playing s)
+        return $ Just inHandle
+      _ -> return Nothing
+  when (isJust inHandle) $ liftIO $ hPutStrLn (fromJust inHandle) "P"
 
 stop :: (MonadIO m, MonadReader Player m) => m ()
 stop = do
   Player {..} <- ask
-  state <- liftIO $ atomically $ readTVar playerState
-  case state of
-    Stopped -> return ()
-    _ -> liftIO $ do
-      PlayerContext {..} <- atomically $ readTMVar playerContext
-      killThread childThreadId
-      atomically $ waitLock playerLock
+  childThreadId <- liftIO $ atomically $ do
+    state <- readTVar playerState
+    case state of
+      Stopped -> return Nothing
+      _ -> do
+        PlayerContext {..} <- readTMVar mpg123Context
+        return $ Just childThreadId
+  when (isJust childThreadId) $ liftIO $ killThread (fromJust childThreadId)
+  liftIO $ atomically $ waitLock playerLock Released
 
 updateVolume :: (MonadIO m, MonadReader Player m) => m ()
 updateVolume = do
   Player {..} <- ask
-  h <- fmap inHandle <$> liftIO (atomically $ tryReadTMVar playerContext)
+  h <- fmap inHandle <$> liftIO (atomically $ tryReadTMVar mpg123Context)
   let v = if playerMuted then 0 else playerVolume
   liftIO $ maybe (return ()) (\h -> hPutStrLn h $ "V " ++ show v) h

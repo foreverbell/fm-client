@@ -10,35 +10,19 @@ module FM.NetEase.JSON (
 , decodeUserId
 ) where
 
-import           Control.Monad (msum, mzero, forM)
+import           Control.Monad (msum, forM)
 import qualified Data.Aeson as JSON
 import           Data.Aeson ((.:), (.:?))
-import qualified Data.Aeson.Encode as JSON
+import           Data.Aeson.Extra
 import qualified Data.Aeson.Types as JSON
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString.Builder as BB
-import qualified Data.Text as T
-import           Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vector as V
+import qualified Data.Text as T
 import           Text.Printf (printf)
 
 import qualified FM.Song as Song
 import           FM.NetEase.Crypto (encryptSongId)
-
-instance JSON.ToJSON BS.ByteString where
-  toJSON = JSON.String . decodeUtf8
-
-encodeJSON :: JSON.Value -> BS.ByteString
-encodeJSON = BL.toStrict . BB.toLazyByteString . JSON.encodeToBuilder
-
-onObject :: (JSON.Object -> JSON.Parser a) -> JSON.Value -> JSON.Parser a
-onObject f (JSON.Object o) = f o
-onObject _ _ = mzero
-
-onArray :: (JSON.Array -> JSON.Parser a) -> JSON.Value -> JSON.Parser a
-onArray f (JSON.Array a) = f a
-onArray _ _ = mzero
 
 newtype FM = FM [Song.Song]
 newtype Recommend = Recommend [Song.Song]

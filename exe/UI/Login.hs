@@ -22,12 +22,12 @@ import           Control.Monad.Cont (ContT (..))
 import           Data.Default.Class
 import           System.Directory (createDirectoryIfMissing, getHomeDirectory)
 
+import qualified FM.Cache as Cache
 import qualified FM.NetEase as NetEase
-import           FM.FM (runSessionOnly)
 import           SessionManager
 import           Types
 
-getConfig :: (MonadIO m) => MusicSourceType -> m String
+getConfig :: (MonadIO m) => MusicSourceType -> m FilePath
 getConfig source = do
   dir <- (++ "/.fm") <$> liftIO getHomeDirectory
   liftIO $ createDirectoryIfMissing True dir
@@ -36,10 +36,10 @@ getConfig source = do
 readLoginConfig :: (MonadIO m) => MusicSourceType -> m (String, String)
 readLoginConfig source = do
   conf <- getConfig source
-  [userName, password] <- lines <$> liftIO (readFile conf)
+  [userName, password] <- take 2 . lines <$> liftIO (readFile conf)
   return (userName, password)
 
-writeLoginConfig :: MusicSourceType -> (String, String) -> IO ()
+writeLoginConfig :: (MonadIO m) => MusicSourceType -> (String, String) -> m ()
 writeLoginConfig source (userName, password) = do
   conf <- getConfig source
   liftIO $ writeFile conf (unlines [userName, password])
@@ -55,6 +55,7 @@ data State = State {
 , passwordEditor :: UI.Editor
 , musicSource    :: MusicSource
 , sessionManager :: SessionManager
+, cache          :: Cache
 , onGreetings    :: Bool
 , uiTitle        :: String
 , postEvent      :: Event -> IO ()
@@ -92,6 +93,7 @@ loginEvent state@State {..} event = case event of
   Hi -> do
     session <- case viewType musicSource of
       NetEaseMusic -> NetEase.initSession True
+      LocalMusic -> Cache.initSession cache
     UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
 
   Hello -> do
@@ -107,6 +109,7 @@ loginEvent state@State {..} event = case event of
               session <- NetEase.initSession True
               liftIO $ runSessionOnly session (NetEase.login userName password)
               return session
+            LocalMusic -> undefined
           insertSession sessionManager sourceType session
           return session
     case session of
@@ -121,13 +124,13 @@ loginEvent state@State {..} event = case event of
     PasswordEditor -> do
       let sourceType = viewType musicSource
       let [userName] = UI.getEditContents userNameEditor
-      let [password] = case sourceType of
-             NetEaseMusic -> NetEase.encryptPassword <$> UI.getEditContents passwordEditor
-      session <- case sourceType of
+      (session, password) <- case sourceType of
         NetEaseMusic -> do
+          let [password] = NetEase.encryptPassword <$> UI.getEditContents passwordEditor
           session <- NetEase.initSession True
           liftIO $ runSessionOnly session (NetEase.login userName password)
-          return session
+          return (session, password)
+        LocalMusic -> undefined
       liftIO $ writeLoginConfig sourceType (userName, password)
       insertSession sessionManager sourceType session
       UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
@@ -154,8 +157,8 @@ loginApp = UI.App { UI.appDraw = loginDraw
                   , UI.appLiftVtyEvent = Event
                   }
 
-loginCont :: String -> MusicSource -> SessionManager -> (SomeSession -> IO ()) -> IO ()
-loginCont title source manager continuation = void $ do
+loginCont :: String -> MusicSource -> SessionManager -> Cache -> (SomeSession -> IO ()) -> IO ()
+loginCont title source sessionManager cache continuation = void $ do
   let editor1 = UI.editor (editorName UserNameEditor) (UI.str . unlines) Nothing []
   let editor2 = UI.editor (editorName PasswordEditor) (\[s] -> UI.str $ replicate (length s) '*') Nothing []
   chan <- newChan
@@ -165,12 +168,13 @@ loginCont title source manager continuation = void $ do
                                                    , userNameEditor = editor1
                                                    , passwordEditor = editor2
                                                    , musicSource = source
-                                                   , sessionManager = manager
+                                                   , sessionManager = sessionManager
+                                                   , cache = cache
                                                    , onGreetings = True
                                                    , uiTitle = title
                                                    , postEvent = postEvent
                                                    , continuation = continuation
                                                    }
 
-login :: String -> MusicSource -> SessionManager -> ContT () IO SomeSession
-login title source manager = ContT (loginCont title source manager)
+login :: String -> MusicSource -> SessionManager -> Cache -> ContT () IO SomeSession
+login title source sessionManager cache = ContT (loginCont title source sessionManager cache)

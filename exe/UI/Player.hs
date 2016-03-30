@@ -24,9 +24,9 @@ import qualified Data.Sequence as S
 import           Text.Printf (printf)
 import           System.Random (randomRIO)
 
-import           FM.FM
+import qualified FM.FM as FM
 import qualified FM.Song as Song
-import qualified FM.Player as Player
+import qualified FM.Cache as Cache
 import qualified FM.NetEase as NetEase
 
 import           UI.Menu
@@ -35,6 +35,7 @@ import           Types
 data State = State {
   session       :: SomeSession
 , player        :: Player
+, cache         :: Cache
 , source        :: MusicSource
 , playMode      :: PlayMode
 , playSequence  :: S.Seq Song.Song
@@ -53,6 +54,9 @@ data Event = VtyEvent UI.Event
            | UserEventUpdateProgress (Double, Double)
            | UserEventUpdateLyrics String
 
+liftCache :: (MonadIO m) => State -> CacheOnly a -> m a
+liftCache State {..} m = liftIO $ runCacheOnly cache m
+
 liftSession :: (MonadIO m, IsSession s) => State -> SessionOnly s a -> m a
 liftSession State {..} m = liftIO $ runSessionOnly session m
 
@@ -66,10 +70,13 @@ fetch state@State {..} = case source of
   NetEaseDailyRecommendation -> liftSession state NetEase.fetchRecommend
   NetEasePlayLists -> undefined
   NetEasePlayList id _ -> liftSession state (NetEase.fetchPlayList id)
+  LocalCache -> liftSession state (Cache.fetchCache)
 
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state@State {..} song = case viewType source of
   NetEaseMusic -> liftSession state (NetEase.fetchLyrics song)
+  -- TODO: local lyrics
+  LocalMusic -> liftSession state (NetEase.fetchLyrics song)
 
 fetchMore :: (MonadIO m) => State -> m State
 fetchMore state@State {..} = do
@@ -83,7 +90,7 @@ play state@State {..}
       let onTerminate e = when e (postEvent (UserEventPending False))
       let onProgress p = postEvent (UserEventUpdateProgress p)
       let onLyrics l = postEvent (UserEventUpdateLyrics l)
-      liftPlayer state $ Player.play (playSequence `S.index` (currentIndex - 1)) (fetchLyrics state) onTerminate onProgress onLyrics
+      liftPlayer state $ FM.play (playSequence `S.index` (currentIndex - 1)) (fetchLyrics state) onTerminate onProgress onLyrics
       return state { focusedIndex = currentIndex
                    , stopped = False
                    , progress = (0, 0)
@@ -92,17 +99,17 @@ play state@State {..}
 
 pause :: (MonadIO m) => State -> m State
 pause state = do
-  liftPlayer state Player.pause
+  liftPlayer state FM.pause
   return state { pendingMasked = True }
 
 resume :: (MonadIO m) => State -> m State
 resume state = do
-  liftPlayer state Player.resume
+  liftPlayer state FM.resume
   return state { pendingMasked = False }
 
 stop :: (MonadIO m) => State -> m State
 stop state = do
-  liftPlayer state Player.stop
+  liftPlayer state FM.stop
   return state { stopped = True
                , progress = (0, 0)
                , currentLyrics = []
@@ -110,17 +117,23 @@ stop state = do
 
 setVolume :: (MonadIO m) => State -> Int -> m State
 setVolume state@State {..} d = do
-  let newVolume = max 0 $ min 100 $ playerVolume player + d
-  let newState = state { player = player { playerVolume = newVolume } }
-  liftPlayer newState Player.updateVolume
+  let newVolume = max 0 $ min 100 $ FM.playerVolume player + d
+  let newState = state { player = player { FM.playerVolume = newVolume } }
+  liftPlayer newState FM.updateVolume
   return newState
 
 toggleMute :: (MonadIO m) => State -> m State
 toggleMute state@State {..} = do
-  let newMuted = not (playerMuted player)
-  let newState = state { player = player { playerMuted = newMuted } }
-  liftPlayer newState Player.updateVolume
+  let newMuted = not (FM.playerMuted player)
+  let newState = state { player = player { FM.playerMuted = newMuted } }
+  liftPlayer newState FM.updateVolume
   return newState
+
+cacheSong :: (MonadIO m) => State -> m State
+cacheSong state@State {..} = do
+  when (focusedIndex /= 0 && not (isLocal source)) $ do
+    liftCache state (FM.cacheSong $ playSequence `S.index` (focusedIndex - 1))
+  return state
 
 musicPlayerDraw :: State -> [UI.Widget]
 musicPlayerDraw State {..} = [ui]
@@ -149,8 +162,8 @@ musicPlayerDraw State {..} = [ui]
     bar2 = UI.mkCyan $ UI.hCenter $ UI.str $ unwords [playModeBar, volumeBar]
       where
         playModeBar = printf "[播放模式: %s]" (show1 playMode)
-        volumeBar | playerMuted player = "[静音]"
-                  | otherwise = printf "[音量: %d%%]" (playerVolume player)
+        volumeBar | FM.playerMuted player = "[静音]"
+                  | otherwise = printf "[音量: %d%%]" (FM.playerVolume player)
 
     lyrics = UI.mkRed $ UI.hCenter $ UI.str $ if null currentLyrics then " " else currentLyrics
 
@@ -165,7 +178,7 @@ musicPlayerEvent state@State {..} event = case event of
   UserEventFetchMore -> UI.continue =<< fetchMore state
 
   UserEventPending ignoreMask -> do
-    pState <- liftIO $ atomically $ readTVar (playerState player)
+    pState <- liftIO $ atomically $ readTVar (FM.playerState player)
     if (not ignoreMask && pendingMasked) || not (isStopped pState)
       then UI.continue state
       else do
@@ -182,15 +195,13 @@ musicPlayerEvent state@State {..} event = case event of
 
   UserEventUpdateLyrics l -> UI.continue state { currentLyrics = l }
 
-  VtyEvent (UI.EvKey UI.KEsc []) -> do
-    pState <- liftIO $ atomically $ readTVar (playerState player)
-    if isStopped pState
-       then UI.halt state
-       else UI.continue =<< stop state
+  VtyEvent (UI.EvKey UI.KEsc []) -> if stopped
+    then UI.halt state
+    else UI.continue =<< stop state
 
   VtyEvent (UI.EvKey (UI.KChar ' ') []) -> musicPlayerEvent state (VtyEvent $ UI.EvKey UI.KEnter [])
   VtyEvent (UI.EvKey UI.KEnter []) -> do
-    pState <- liftIO $ atomically $ readTVar (playerState player)
+    pState <- liftIO $ atomically $ readTVar (FM.playerState player)
     UI.continue =<< case pState of
       Playing _ -> if currentIndex == focusedIndex
         then pause state
@@ -228,6 +239,8 @@ musicPlayerEvent state@State {..} event = case event of
       Just newPlayMode -> state { playMode = newPlayMode }
       Nothing -> state
 
+  VtyEvent (UI.EvKey (UI.KChar 'c') []) -> UI.continue =<< cacheSong state
+
   _ -> UI.continue state
 
 musicPlayerApp :: UI.App State Event
@@ -239,13 +252,14 @@ musicPlayerApp = UI.App { UI.appDraw = musicPlayerDraw
                         , UI.appChooseCursor = UI.neverShowCursor
                         }
 
-musicPlayer_ :: MusicSource -> SomeSession -> IO ()
-musicPlayer_ source session = void $ do
-  player <- initPlayer
+musicPlayer_ :: MusicSource -> SomeSession -> Cache -> IO ()
+musicPlayer_ source session cache = void $ do
+  player <- FM.initPlayer
   chan <- newChan
   let postEvent = writeChan chan
   let state = State { session = session
                     , player = player
+                    , cache = cache
                     , source = source
                     , playMode = defaultPlayMode source
                     , playSequence = S.empty
@@ -260,5 +274,5 @@ musicPlayer_ source session = void $ do
   postEvent UserEventFetchMore
   UI.customMain (UI.mkVty def) chan musicPlayerApp state
 
-musicPlayer :: MusicSource -> SomeSession -> ContT () IO ()
-musicPlayer source session = ContT (const $ musicPlayer_ source session)
+musicPlayer :: MusicSource -> SomeSession -> Cache -> ContT () IO ()
+musicPlayer source session cache = ContT (const $ musicPlayer_ source session cache)
