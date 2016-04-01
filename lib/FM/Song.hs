@@ -8,7 +8,7 @@ module FM.Song (
 ) where
 
 import Data.Default.Class
-import Data.List (sort)
+import Data.List (sort, intercalate)
 import Text.Parsec
 
 type SongId = Int
@@ -22,9 +22,6 @@ data Song = Song {
 }
 
 newtype Lyrics = Lyrics [(Double, String)]
-  deriving (Show, Read)
-
-{-
 
 instance Show Song where
   show Song {..} = unlines [ "Song {"
@@ -42,8 +39,6 @@ instance Show Song where
 
 instance Show Lyrics where
   show (Lyrics lyrics) = unlines [ "Lyrics {", unlines $ map (\(t, l) -> "  [" ++ show t ++ "]" ++ l) lyrics, "}" ]
-
--}
 
 instance Default Lyrics where
   def = Lyrics [ (0, "No Lyrics") ]

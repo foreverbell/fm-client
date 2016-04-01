@@ -1,5 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
 module FM.FM ( 
   runCache, runSession, runPlayer
 

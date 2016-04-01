@@ -22,14 +22,14 @@ import qualified Crypto.Hash as C
 import qualified Data.Aeson as JSON
 import           Data.Aeson ((.:), (.=))
 import           Data.Aeson.Extra
+import qualified Data.Aeson.Types as JSON
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
 import           Data.Default.Class (def)
-import           Data.Maybe (fromJust, isJust, fromMaybe)
+import           Data.Maybe (fromJust, isJust)
 import qualified Data.Vector as V
 import           System.Directory (doesFileExist, getDirectoryContents)
 import           System.Process (runInteractiveProcess, waitForProcess)
-import           Text.Read (readMaybe)
 
 import qualified FM.NetEase as NetEase
 import           FM.Session
@@ -49,23 +49,30 @@ data SongWithLyrics = SongWithLyrics Song.Song Song.Lyrics
 
 instance JSON.FromJSON SongWithLyrics where
   parseJSON = onObject $ \v -> do
-    let parseArtists = onArray $ \v -> mapM JSON.parseJSON (V.toList v)
+    let
+      parseArray :: (JSON.FromJSON a) => JSON.Value -> JSON.Parser [a]
+      parseArray = onArray $ \v -> mapM JSON.parseJSON (V.toList v)
     uid <- v .: "uid"
     title <- v .: "title"
     album <- v .: "album"
-    artists <- parseArtists =<< v .: "artists"
+    artists <- parseArray =<< v .: "artists"
     let url = [ ]
-    lyrics <- fromMaybe def . readMaybe <$> (v .: "lyrics")
+    let parseLyrics = onObject $ \v -> do
+          time <- parseArray =<< v .: "time"
+          body <- parseArray =<< v .: "body"
+          return $ Song.Lyrics $ zip time body
+    lyrics <- parseLyrics =<< v .: "lyrics"
     return $ SongWithLyrics Song.Song {..} lyrics
 
 instance JSON.ToJSON SongWithLyrics where
-  toJSON (SongWithLyrics Song.Song {..} lyrics) = 
+  toJSON (SongWithLyrics Song.Song {..} (Song.Lyrics lyrics)) = 
     JSON.object [ "uid" .= uid
                 , "title" .= title
                 , "album" .= album
-                , "artists" .= JSON.Array (V.fromList (JSON.toJSON <$> artists))
-                , "lyrics" .= show lyrics
+                , "artists" .= array artists
+                , "lyrics" .= JSON.object [ "time" .= array (map fst lyrics), "body" .= array (map snd lyrics) ]
                 ]
+    where array xs = JSON.Array (V.fromList (JSON.toJSON <$> xs))
 
 data Cache = Cache {
   cachePath :: FilePath

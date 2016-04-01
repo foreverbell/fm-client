@@ -65,7 +65,7 @@ fetch state@State {..} = case source of
   NetEaseDailyRecommendation -> liftSession state NetEase.fetchRecommend
   NetEasePlayLists -> undefined
   NetEasePlayList id _ -> liftSession state (NetEase.fetchPlayList id)
-  LocalCache -> liftSession state (Cache.fetchCache)
+  LocalCache -> liftSession state Cache.fetchCache
 
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state@State {..} song = if isLocal source
@@ -125,8 +125,7 @@ toggleMute state@State {..} = do
 
 cacheSong :: (MonadIO m) => State -> m State
 cacheSong state@State {..} = do
-  when (focusedIndex /= 0 && not (isLocal source)) $ do
-    liftCache state (FM.cacheSong $ playSequence `S.index` (focusedIndex - 1))
+  when (focusedIndex /= 0 && not (isLocal source)) $ liftCache state (FM.cacheSong $ playSequence `S.index` (focusedIndex - 1))
   return state
 
 musicPlayerDraw :: State -> [UI.Widget]

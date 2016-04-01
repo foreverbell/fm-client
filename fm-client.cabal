@@ -1,5 +1,5 @@
 name:                fm-client
-version:             1.1.0
+version:             1.1.1
 synopsis:            NetEase Cloud Music FM client in Haskell.
 homepage:            http://github.com/foreverbell/fm-client#readme
 license:             BSD3
