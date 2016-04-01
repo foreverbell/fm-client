@@ -32,8 +32,8 @@ main = do
     session <- Login.login source netEaseSession cache
     case source of
       NetEasePlayLists -> do
-        playLists <- liftIO $ Black.black Nothing (runSessionOnly session NetEase.fetchPlayLists) return
+        playLists <- liftIO $ Black.black Nothing (runSession session NetEase.fetchPlayLists) return
         source <- Menu.menuSelection [ NetEasePlayList id title | (id, title) <- playLists ] Nothing (show1 NetEasePlayLists)
         Player.musicPlayer source session cache
       _ -> Player.musicPlayer source session cache
-  Black.black (Just "缓存队列中有任务，缓存完毕后自动退出。") (waitCaching cache) return
+  Black.black (Just "缓存队列中有任务，缓存完毕后自动退出。") (waitAllCacheTasks cache) return

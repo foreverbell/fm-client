@@ -1,16 +1,19 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module FM.CacheManager (
-  Cache
+  MonadCache, runCache
+, Cache
 , initCache
 , cacheSong
-, waitCaching
+, waitAllCacheTasks
 , initSession
 , fetchCache
+, fetchLyrics
 ) where
 
-import           Control.Concurrent (ThreadId, forkIO)
+import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM.TQueue
 import           Control.Concurrent.STM.Lock
 import           Control.Monad.Reader
@@ -21,18 +24,30 @@ import           Data.Aeson ((.:), (.=))
 import           Data.Aeson.Extra
 import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
-import           Data.Maybe (fromJust, isJust)
+import           Data.Default.Class (def)
+import           Data.Maybe (fromJust, isJust, fromMaybe)
 import qualified Data.Vector as V
 import           System.Directory (doesFileExist, getDirectoryContents)
 import           System.Process (runInteractiveProcess, waitForProcess)
+import           Text.Read (readMaybe)
 
+import qualified FM.NetEase as NetEase
 import           FM.Session
 import qualified FM.Song as Song
 
-hashSongId :: String -> String
-hashSongId = show . C.hashWith C.MD5 . BS8.pack
+newtype MonadCache a = MonadCache (ReaderT Cache IO a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader Cache)
 
-instance JSON.FromJSON Song.Song where
+runCache :: Cache -> MonadCache a -> IO a
+runCache cache (MonadCache m) = runReaderT m cache
+
+hashSongId :: String -> String
+hashSongId uid = uid ++ "-" ++ hash
+  where hash = show $ C.hashWith C.MD5 $ BS8.pack uid
+
+data SongWithLyrics = SongWithLyrics Song.Song Song.Lyrics
+
+instance JSON.FromJSON SongWithLyrics where
   parseJSON = onObject $ \v -> do
     let parseArtists = onArray $ \v -> mapM JSON.parseJSON (V.toList v)
     uid <- v .: "uid"
@@ -40,50 +55,53 @@ instance JSON.FromJSON Song.Song where
     album <- v .: "album"
     artists <- parseArtists =<< v .: "artists"
     let url = [ ]
-    return Song.Song {..}
+    lyrics <- fromMaybe def . readMaybe <$> (v .: "lyrics")
+    return $ SongWithLyrics Song.Song {..} lyrics
 
-instance JSON.ToJSON Song.Song where
-  toJSON Song.Song {..} = JSON.object [ "uid" .= uid
-                                      , "title" .= title
-                                      , "album" .= album
-                                      , "artists" .= JSON.Array (V.fromList (JSON.toJSON <$> artists))
-                                      ]
+instance JSON.ToJSON SongWithLyrics where
+  toJSON (SongWithLyrics Song.Song {..} lyrics) = 
+    JSON.object [ "uid" .= uid
+                , "title" .= title
+                , "album" .= album
+                , "artists" .= JSON.Array (V.fromList (JSON.toJSON <$> artists))
+                , "lyrics" .= show lyrics
+                ]
 
 data Cache = Cache {
-  cachePath      :: FilePath
-, songQueue      :: TQueue (String, FilePath)
-, queueLock      :: Lock
-, workerThreadId :: ThreadId
+  cachePath :: FilePath
+, songQueue :: TQueue Song.Song
+, queueLock :: Lock
 }
 
 initCache :: (MonadIO m) => FilePath -> m Cache
 initCache cachePath = do
   songQueue <- liftIO newTQueueIO
   queueLock <- liftIO newLockIO
-  workerThreadId <- liftIO $ forkIO $ forever $ do
-    (url, path) <- atomically $ do
+  netEaseSession <- NetEase.initSession True
+  liftIO $ forkIO $ forever $ do
+    song@Song.Song {..} <- atomically $ do
       result <- peekTQueue songQueue
       state <- viewLock queueLock
       when (state == Released) (acquireLock queueLock)
       return result
-    (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", path, url ] Nothing Nothing
+    let hashPath = hashSongId (show uid)
+    (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", url ] Nothing Nothing
     waitForProcess h
+    lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
+    BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode $ SongWithLyrics song lyrics)
     atomically $ do
       readTQueue songQueue
       isEmpty <- isEmptyTQueue songQueue
       when isEmpty (releaseLock queueLock)
   return Cache {..}
 
-waitCaching :: (MonadIO m) => Cache -> m ()
-waitCaching Cache {..} = liftIO $ atomically $ waitLock queueLock Released
+waitAllCacheTasks :: (MonadIO m) => Cache -> m ()
+waitAllCacheTasks Cache {..} = liftIO $ atomically $ waitLock queueLock Released
 
 cacheSong :: (MonadIO m, MonadReader Cache m) => Song.Song -> m ()
-cacheSong song@Song.Song {..} = do
+cacheSong song = do
   Cache {..} <- ask
-  let hashPath = show uid ++ "-" ++ hashSongId (show uid)
-  liftIO $ do
-    BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode song)
-    atomically $ writeTQueue songQueue (url, hashPath ++ ".mp3")
+  liftIO $ atomically $ writeTQueue songQueue song
 
 data Session = Session {
   sessionCachePath :: FilePath
@@ -102,7 +120,7 @@ fetchCache = do
     let fullPath = sessionCachePath ++ "/" ++ path
     song <- liftIO $ JSON.decode <$> BL.readFile fullPath
     case song of
-      Just song -> do
+      Just (SongWithLyrics song _) -> do
         let url = take (length fullPath - 4) fullPath ++ "mp3"
         return $ Just song { Song.url = url }
       Nothing -> return Nothing
@@ -111,8 +129,15 @@ fetchCache = do
     isValid dir path = do
       let fullPath = dir ++ "/" ++ path
       isFile <- doesFileExist fullPath
-      let id = takeWhile (/= '-') path
-      let hashPath = id ++ "-" ++ hashSongId id
+      let uid = takeWhile (/= '-') path
+      let hashPath = hashSongId uid
       let validFile = path == (hashPath ++ ".json")
       mp3Exists <- doesFileExist (dir ++ "/" ++ hashPath ++ ".mp3")
       return $ isFile && validFile && mp3Exists
+
+fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
+fetchLyrics Song.Song {..} = do
+  song <- liftIO $ JSON.decode <$> BL.readFile (take (length url - 3) url ++ "json")
+  return $ case song of
+    Just (SongWithLyrics _ lyrics) -> lyrics
+    Nothing -> def

@@ -54,14 +54,9 @@ data Event = VtyEvent UI.Event
            | UserEventUpdateProgress (Double, Double)
            | UserEventUpdateLyrics String
 
-liftCache :: (MonadIO m) => State -> CacheOnly a -> m a
-liftCache State {..} m = liftIO $ runCacheOnly cache m
-
-liftSession :: (MonadIO m, IsSession s) => State -> SessionOnly s a -> m a
-liftSession State {..} m = liftIO $ runSessionOnly session m
-
-liftPlayer :: (MonadIO m) => State -> PlayerOnly a -> m a
-liftPlayer State {..} m = liftIO $ runPlayerOnly player m
+liftCache State {..} m = liftIO $ runCache cache m
+liftSession State {..} m = liftIO $ runSession session m
+liftPlayer State {..} m = liftIO $ runPlayer player m
 
 fetch :: (MonadIO m) => State -> m [Song.Song]
 fetch state@State {..} = case source of
@@ -74,7 +69,7 @@ fetch state@State {..} = case source of
 
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state@State {..} song = if isLocal source
-  then return def -- TODO: local lyrics
+  then liftSession state (Cache.fetchLyrics song)
   else liftSession state (NetEase.fetchLyrics song)
 
 fetchMore :: (MonadIO m) => State -> m State

@@ -1,7 +1,9 @@
 {-# LANGUAGE RecordWildCards, FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module FM.Player (
-  PlayerState (..)
+  MonadPlayer, runPlayer
+, PlayerState (..)
 , isStopped
 , Player (..)
 , initPlayer
@@ -26,6 +28,12 @@ import           System.IO
 import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess, terminateProcess)
 
 import qualified FM.Song as Song
+
+newtype MonadPlayer a = MonadPlayer (ReaderT Player IO a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader Player)
+
+runPlayer :: Player -> MonadPlayer a -> IO a
+runPlayer player (MonadPlayer m) = runReaderT m player
 
 data PlayerState = Playing Song.Song
                  | Paused Song.Song

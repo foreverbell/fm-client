@@ -6,8 +6,7 @@ module Types (
 , requireLogin
 , defaultPlayMode
 
-, CacheOnly, SessionOnly, PlayerOnly
-, runCacheOnly, runSessionOnly, runPlayerOnly
+, runCache, runSession, runPlayer
 , Cache
 , IsSession, SomeSession (..)
 , Player, PlayerState (..), isStopped

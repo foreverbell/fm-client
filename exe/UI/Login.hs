@@ -28,21 +28,21 @@ import qualified FM.NetEase as NetEase
 import           Types
 
 getConfig :: (MonadIO m) => m FilePath
-getConfig = do
-  dir <- (++ "/.fm") <$> liftIO getHomeDirectory
-  liftIO $ createDirectoryIfMissing True dir
+getConfig = liftIO $ do
+  dir <- (++ "/.fm") <$> getHomeDirectory
+  createDirectoryIfMissing True dir
   return $ dir ++ "/login.conf"
 
 readLoginConfig :: (MonadIO m) => m (String, String)
-readLoginConfig = do
+readLoginConfig = liftIO $ do
   conf <- getConfig
-  [userName, password] <- take 2 . lines <$> liftIO (readFile conf)
+  [userName, password] <- take 2 . lines <$> readFile conf
   return (userName, password)
 
 writeLoginConfig :: (MonadIO m) => (String, String) -> m ()
-writeLoginConfig (userName, password) = do
+writeLoginConfig (userName, password) = liftIO $ do
   conf <- getConfig
-  liftIO $ writeFile conf (unlines [userName, password])
+  writeFile conf (unlines [userName, password])
 
 data Event = Event UI.Event | Hi | Hello | Goodbye
 
@@ -105,7 +105,7 @@ loginEvent state@State {..} event = case event of
         Nothing -> do
           (userName, password) <- readLoginConfig
           session <- NetEase.initSession True
-          liftIO $ runSessionOnly session (NetEase.login userName password)
+          runSession session (NetEase.login userName password)
           writeIORef netEaseSession (Just session)
           return session
     case session of
@@ -122,7 +122,7 @@ loginEvent state@State {..} event = case event of
       let [password] = NetEase.encryptPassword <$> UI.getEditContents passwordEditor
       session <- NetEase.initSession True
       liftIO $ do
-        runSessionOnly session (NetEase.login userName password)
+        runSession session (NetEase.login userName password)
         writeLoginConfig (userName, password)
         writeIORef netEaseSession (Just session)
       UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
