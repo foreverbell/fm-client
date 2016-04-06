@@ -43,6 +43,7 @@ parseSongList = onArray $ \v -> mapM parseSong (V.toList v)
 
 parseSong :: JSON.Value -> JSON.Parser Song.Song
 parseSong = onObject $ \v -> do
+  -- TODO: HEAD this url to check if file really exists.
   url <- do
     urls <- forM ["hMusic", "mMusic", "lMusic"] $ \m -> do
       node <- v .:? m
@@ -50,7 +51,7 @@ parseSong = onObject $ \v -> do
         Just node -> flip onObject node $ \v -> do
           dfsId <- v .: "dfsId" :: JSON.Parser Int
           let encId = encryptSongId (show dfsId)
-          return $ Just (printf "http://m1.music.126.net/%s/%d.mp3" encId dfsId)
+          return $ Just (printf "http://m1.music.126.net/%s/%d.mp3" encId dfsId :: String)
         Nothing -> return Nothing
     case msum urls of
       Just url -> return url

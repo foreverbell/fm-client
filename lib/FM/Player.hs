@@ -97,7 +97,7 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
     loop True _ out@('@':'F':_) = do
       let len = read (words out !! 4)
       onProgress (len, 0)
-      loop False (len, 0, Nothing) =<< hGetLine outHandle
+      continue $ loop False (len, 0, Nothing)
 
     loop False (len, cur, lyrics) out@('@':'F':_) = do
       let cur' = read (words out !! 3)
@@ -109,9 +109,16 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
           case lyrics of
             Just (Right lyrics) -> Just <$> notifyLyrics lyrics cur' onLyrics
             _ -> return Nothing
-      loop False (len, cur', lyrics') =<< hGetLine outHandle
+      continue $ loop False (len, cur', lyrics')
 
-    loop b ctx _ = loop b ctx =<< hGetLine outHandle
+    loop b ctx ('@':_) = continue $ loop b ctx
+
+    loop _ _ _ = return () -- encounter mpg123 internal error.
+
+    continue :: (String -> IO ()) -> IO ()
+    continue cont = do
+      isEOF <- hIsEOF outHandle
+      unless isEOF $ cont =<< hGetLine outHandle
 
     playerThread = do
       atomically $ waitLock playerLock Acquired

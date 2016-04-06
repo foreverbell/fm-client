@@ -70,8 +70,8 @@ instance JSON.FromJSON ResponseMessage where
   parseJSON (JSON.Object v) = ResponseMessage <$> v .: "code" <*> v .:? "message"
   parseJSON _ = fail "invalid response"
 
-checkJSON :: (MonadIO m) => Either String a -> (a -> m b) -> m b
-checkJSON r f = case r of
+validateJSON :: (MonadIO m) => Either String a -> (a -> m b) -> m b
+validateJSON r f = case r of
   Right x -> f x
   Left err -> liftIO $ throwM $ NetEaseParseException err
 
@@ -117,7 +117,7 @@ sendRequest Session {..} method url query = liftIO $ case method of
             let updateCookieJar = fst . HTTP.updateCookieJar response request now
             modifyIORef' sessionCookies updateCookieJar
           let body = HTTP.responseBody response
-          checkJSON (JSON.eitherDecode (BL.fromStrict body)) $ \case
+          validateJSON (JSON.eitherDecode (BL.fromStrict body)) $ \case
             ResponseMessage 200 _ -> return body
             ResponseMessage rc m -> throwM (NetEaseOtherExceptipon rc m)
         _ -> throwM (NetEaseStatusCodeException statusCode (BS8.unpack <$> response))
@@ -171,13 +171,13 @@ login userName password = do
                     , ("rememberLogin", JSON.toJSON False)
                     ]
   body <- sendRequest session PostAndSaveCookies loginURL request
-  liftIO $ checkJSON (decodeUserId body) (writeIORef (sessionUserId session))
+  validateJSON (decodeUserId body) (liftIO . writeIORef (sessionUserId session))
 
 fetchFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchFM = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/radio/get" ()
-  liftIO $ checkJSON (decodeFM body) return
+  validateJSON (decodeFM body) return
 
 fetchRecommend :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchRecommend = do
@@ -194,7 +194,7 @@ fetchRecommend = do
         , ("csrf_token", JSON.toJSON csrf)
         ]
       body <- sendRequest session Post url request
-      liftIO $ checkJSON (decodeRecommend body) return
+      validateJSON (decodeRecommend body) return
     Nothing -> return []
 
 fetchPlayLists :: (MonadIO m, MonadReader Session m) => m [(Int, String)]
@@ -205,13 +205,13 @@ fetchPlayLists = do
      then return []
      else do
        body <- sendRequest session Get "http://music.163.com/api/user/playlist" (FetchPlayLists userId)
-       liftIO $ checkJSON (decodePlayLists body) return
+       validateJSON (decodePlayLists body) return
 
 fetchPlayList :: (MonadIO m, MonadReader Session m) => Int -> m [Song.Song]
 fetchPlayList id = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/playlist/detail" (FetchPlayList id)
-  liftIO $ checkJSON (decodePlayList body) return
+  validateJSON (decodePlayList body) return
 
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do
