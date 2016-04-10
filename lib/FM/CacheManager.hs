@@ -7,6 +7,7 @@ module FM.CacheManager (
 , Cache
 , initCache
 , cacheSong
+, deleteSong
 , waitAllCacheTasks
 , initSession
 , fetchCache
@@ -16,6 +17,7 @@ module FM.CacheManager (
 import           Control.Concurrent (forkIO)
 import           Control.Concurrent.STM.TQueue
 import           Control.Concurrent.STM.Lock
+import           Control.Exception (try, SomeException)
 import           Control.Monad.Reader
 import           Control.Monad.STM (atomically)
 import qualified Crypto.Hash as C
@@ -28,7 +30,8 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Default.Class (def)
 import           Data.Maybe (fromJust, isJust)
 import qualified Data.Vector as V
-import           System.Directory (doesFileExist, getDirectoryContents)
+import           System.Directory (doesFileExist, getDirectoryContents, removeFile)
+import           System.Exit (ExitCode (..))
 import           System.Process (runInteractiveProcess, waitForProcess)
 
 import qualified FM.NetEase as NetEase
@@ -93,9 +96,10 @@ initCache cachePath = do
       return result
     let hashPath = hashSongId (show uid)
     (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", url ] Nothing Nothing
-    waitForProcess h
-    lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
-    BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode $ SongWithLyrics song lyrics)
+    exitCode <- waitForProcess h
+    when (exitCode == ExitSuccess) $ do
+      lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
+      BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode $ SongWithLyrics song lyrics)
     atomically $ do
       readTQueue songQueue
       isEmpty <- isEmptyTQueue songQueue
@@ -109,6 +113,14 @@ cacheSong :: (MonadIO m, MonadReader Cache m) => Song.Song -> m ()
 cacheSong song = do
   Cache {..} <- ask
   liftIO $ atomically $ writeTQueue songQueue song
+
+deleteSong :: (MonadIO m, MonadReader Cache m) => Song.Song -> m ()
+deleteSong Song.Song {..} = do
+  Cache {..} <- ask
+  let path = cachePath ++ "/" ++ hashSongId (show uid)
+  void $ forM [".mp3", ".json"] $ \suffix -> do
+    let fullPath = path ++ suffix
+    liftIO (try $ removeFile fullPath :: IO (Either SomeException ()))
 
 data Session = Session {
   sessionCachePath :: FilePath

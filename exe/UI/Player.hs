@@ -125,8 +125,21 @@ toggleMute state@State {..} = do
 
 cacheSong :: (MonadIO m) => State -> m State
 cacheSong state@State {..} = do
-  when (focusedIndex /= 0 && not (isLocal source)) $ liftCache state (FM.cacheSong $ playSequence `S.index` (focusedIndex - 1))
+  when (focusedIndex /= 0 && not (isLocal source)) $ liftCache state $ do
+    FM.cacheSong $ playSequence `S.index` (focusedIndex - 1)
   return state
+
+deleteSong :: (MonadIO m) => State -> m State
+deleteSong state@State {..} = do
+  state <- stop state
+  if (focusedIndex /= 0 && isLocal source)
+    then liftCache state $ do
+      FM.deleteSong $ playSequence `S.index` (focusedIndex - 1)
+      let (heads, tails) = S.splitAt (focusedIndex - 1) playSequence
+      let newSequence = heads `mappend` S.drop 1 tails
+      let newIndex = if S.length tails == 1 then focusedIndex - 1 else focusedIndex
+      return state { playSequence = newSequence, focusedIndex = newIndex }
+    else return state
 
 musicPlayerDraw :: State -> [UI.Widget]
 musicPlayerDraw State {..} = [ui]
@@ -233,6 +246,8 @@ musicPlayerEvent state@State {..} event = case event of
       Nothing -> state
 
   VtyEvent (UI.EvKey (UI.KChar 'c') []) -> UI.continue =<< cacheSong state
+
+  VtyEvent (UI.EvKey (UI.KChar 'C') []) -> UI.continue =<< deleteSong state
 
   _ -> UI.continue state
 

@@ -22,6 +22,7 @@ $ fm
 	<tr> <td>n</td> <td>播放下一首歌曲</td> </tr>
 	<tr> <td>o</td> <td>播放模式选择</td> </tr>
 	<tr> <td>c</td> <td>缓存选中歌曲</td> </tr>
+	<tr> <td>C</td> <td>删除选中歌曲的缓存</td> </tr>
 	<tr> <td>-</td> <td>减小音量</td> </tr>
 	<tr> <td>=</td> <td>增大音量</td> </tr>
 	<tr> <td>m</td> <td>静音 / 取消静音</td> </tr>

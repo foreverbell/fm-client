@@ -48,6 +48,7 @@ instance IsQuery () where
 data Session = Session {
   sessionManager :: HTTP.Manager
 , sessionUserId  :: IORef Int
+, sessionCsrf    :: IORef String
 , sessionSecure  :: Bool
 , sessionCookies :: IORef HTTP.CookieJar
 } deriving (Typeable)
@@ -123,10 +124,11 @@ sendRequest Session {..} method url query = liftIO $ case method of
         _ -> throwM (NetEaseStatusCodeException statusCode (BS8.unpack <$> response))
 
 initSession :: (MonadIO m) => Bool -> m SomeSession
-initSession sessionSecure = do
-  sessionManager <- liftIO $ HTTP.newManager (if sessionSecure then HTTP.tlsManagerSettings else HTTP.defaultManagerSettings)
-  sessionUserId <- liftIO $ newIORef 0
-  sessionCookies <- liftIO $ newIORef (HTTP.createCookieJar [])
+initSession sessionSecure = liftIO $ do
+  sessionManager <- HTTP.newManager (if sessionSecure then HTTP.tlsManagerSettings else HTTP.defaultManagerSettings)
+  sessionUserId <- newIORef 0
+  sessionCsrf <- newIORef []
+  sessionCookies <- newIORef (HTTP.createCookieJar [])
   return $ SomeSession Session {..}
 
 data NetEaseQuery = FetchLyrics Song.SongId
@@ -157,7 +159,7 @@ encryptQuery q = do
 
 login :: (MonadIO m, MonadReader Session m) => String -> String -> m ()
 login userName password = do
-  session <- ask
+  session@Session {..} <- ask
   let isPhone = length userName == 11 && all isDigit userName
   let loginURL | isPhone = "http://music.163.com/weapi/login/cellphone"
                | otherwise = "http://music.163.com/weapi/login"
@@ -171,7 +173,12 @@ login userName password = do
                     , ("rememberLogin", JSON.toJSON False)
                     ]
   body <- sendRequest session PostAndSaveCookies loginURL request
-  validateJSON (decodeUserId body) (liftIO . writeIORef (sessionUserId session))
+  validateJSON (decodeUserId body) (liftIO . writeIORef sessionUserId)
+  cookies <- liftIO $ HTTP.destroyCookieJar <$> readIORef sessionCookies
+  let csrf = BS8.unpack . HTTP.cookie_value <$> find (\HTTP.Cookie {..} -> cookie_name == "__csrf") cookies
+  case csrf of
+    Just csrf -> liftIO $ writeIORef sessionCsrf csrf
+    Nothing -> return ()
 
 fetchFM :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchFM = do
@@ -182,20 +189,16 @@ fetchFM = do
 fetchRecommend :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchRecommend = do
   session@Session {..} <- ask
-  cookies <- liftIO $ HTTP.destroyCookieJar <$> readIORef sessionCookies
-  case find (\HTTP.Cookie {..} -> cookie_name == "__csrf") cookies of
-    Just HTTP.Cookie {..} -> do
-      let csrf = BS8.unpack cookie_value
-      let url = "http://music.163.com/weapi/v1/discovery/recommend/songs?csrf_token=" ++ csrf
-      request <- encryptQuery $ encodeJSON $ JSON.object 
-        [ ("offset", JSON.toJSON (0 :: Int))
-        , ("total", JSON.toJSON True)
-        , ("limit", JSON.toJSON (20 :: Int))
-        , ("csrf_token", JSON.toJSON csrf)
-        ]
-      body <- sendRequest session Post url request
-      validateJSON (decodeRecommend body) return
-    Nothing -> return []
+  csrf <- liftIO $ readIORef sessionCsrf
+  let url = "http://music.163.com/weapi/v1/discovery/recommend/songs?csrf_token=" ++ csrf
+  request <- encryptQuery $ encodeJSON $ JSON.object 
+    [ ("offset", JSON.toJSON (0 :: Int))
+    , ("total", JSON.toJSON True)
+    , ("limit", JSON.toJSON (20 :: Int))
+    , ("csrf_token", JSON.toJSON csrf)
+    ]
+  body <- sendRequest session Post url request
+  validateJSON (decodeRecommend body) return
 
 fetchPlayLists :: (MonadIO m, MonadReader Session m) => m [(Int, String)]
 fetchPlayLists = do

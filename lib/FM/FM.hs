@@ -13,7 +13,7 @@ module FM.FM (
 
 , Cache
 , initCache
-, cacheSong
+, cacheSong, deleteSong
 , waitAllCacheTasks
 ) where
 
