@@ -97,9 +97,13 @@ initCache cachePath = do
     let hashPath = hashSongId (show uid)
     (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", url ] Nothing Nothing
     exitCode <- waitForProcess h
-    when (exitCode == ExitSuccess) $ do
-      lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
-      BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode $ SongWithLyrics song lyrics)
+    if exitCode == ExitSuccess
+      then do
+        lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
+        BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode $ SongWithLyrics song lyrics)
+      else do
+        let path = cachePath ++ "/" ++ hashPath ++ ".mp3"
+        void (try (removeFile path) :: IO (Either SomeException ()))
     atomically $ do
       readTQueue songQueue
       isEmpty <- isEmptyTQueue songQueue
