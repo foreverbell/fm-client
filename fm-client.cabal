@@ -68,7 +68,7 @@ executable fm
                      , random
                      , containers
                      , data-default-class
-                     , brick
+                     , brick >= 0.6 && < 0.7
                      , vty
                      , fm-client
   other-modules:
