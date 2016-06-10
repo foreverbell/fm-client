@@ -33,6 +33,7 @@ import           Data.Maybe (fromJust, isJust)
 import qualified Data.Vector as V
 import           System.Directory (doesFileExist, getDirectoryContents, removeFile)
 import           System.Exit (ExitCode (..))
+import           System.IO (hClose)
 import           System.Process (runInteractiveProcess, waitForProcess)
 
 import qualified FM.NetEase as NetEase
@@ -96,8 +97,10 @@ initCache cachePath = do
       when (state == Released) (acquireLock queueLock)
       return result
     let hashPath = hashSongId (show uid)
-    (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", fromJust url ] Nothing Nothing
-    exitCode <- waitForProcess h
+    (_, outHandle, errHandle, processHandle) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", fromJust url ] Nothing Nothing
+    exitCode <- waitForProcess processHandle
+    hClose outHandle
+    hClose errHandle
     if exitCode == ExitSuccess
       then do
         lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
