@@ -46,6 +46,7 @@ isStopped _ = False
 data PlayerContext = PlayerContext {
   inHandle       :: Handle
 , outHandle      :: Handle
+, errHandle      :: Handle
 , processHandle  :: ProcessHandle
 , parentThreadId :: ThreadId
 , childThreadId  :: ThreadId
@@ -68,13 +69,14 @@ initPlayer = liftIO $ do
   playerLock <- newLockIO
   return Player {..}
 
+type FetchUrl = Song.Song -> IO (Maybe String)
 type FetchLyrics = Song.Song -> IO Song.Lyrics
 type Notify a = a -> IO ()
 
-play :: (MonadIO m, MonadReader Player m) => Song.Song -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
-play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
+play :: (MonadIO m, MonadReader Player m) => Song.Song -> FetchUrl -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
+play song@Song.Song {..} fetchUrl fetchLyrics onTerminate onProgress onLyrics = do
   Player {..} <- ask
-  (inHandle, outHandle, _, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
+  (inHandle, outHandle, errHandle, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
         hSetBinaryMode h False
         hSetBuffering h LineBuffering
@@ -122,15 +124,18 @@ play song@Song.Song {..} fetchLyrics onTerminate onProgress onLyrics = do
 
     playerThread = do
       atomically $ waitLock playerLock Acquired
-      hPutStrLn inHandle $ "V " ++ show (if playerMuted then 0 else playerVolume)
-      hPutStrLn inHandle $ "L " ++ url
-      loop True (0, 0, Nothing) =<< hGetLine outHandle
+      url <- fetchUrl song
+      when (isJust url) $ do
+        hPutStrLn inHandle $ "V " ++ show (if playerMuted then 0 else playerVolume)
+        hPutStrLn inHandle $ "L " ++ fromJust url
+        loop True (0, 0, Nothing) =<< hGetLine outHandle
 
     cleanUp e = do
       PlayerContext {..} <- atomically $ do
         writeTVar playerState Stopped
         takeTMVar mpg123Context
       cancel lyricsAsync
+      forM_ [inHandle, outHandle, errHandle] $ \h -> hClose h
       terminateProcess processHandle
       waitForProcess processHandle
       case e of

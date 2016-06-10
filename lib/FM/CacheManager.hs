@@ -11,6 +11,7 @@ module FM.CacheManager (
 , waitAllCacheTasks
 , initSession
 , fetchCache
+, fetchUrl
 , fetchLyrics
 ) where
 
@@ -59,7 +60,7 @@ instance JSON.FromJSON SongWithLyrics where
     title <- v .: "title"
     album <- v .: "album"
     artists <- parseArray =<< v .: "artists"
-    let url = [ ]
+    let url = Nothing
     let parseLyrics = onObject $ \v -> do
           time <- parseArray =<< v .: "time"
           body <- parseArray =<< v .: "body"
@@ -95,7 +96,7 @@ initCache cachePath = do
       when (state == Released) (acquireLock queueLock)
       return result
     let hashPath = hashSongId (show uid)
-    (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", url ] Nothing Nothing
+    (_, _, _, h) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", fromJust url ] Nothing Nothing
     exitCode <- waitForProcess h
     if exitCode == ExitSuccess
       then do
@@ -113,10 +114,10 @@ initCache cachePath = do
 waitAllCacheTasks :: (MonadIO m) => Cache -> m ()
 waitAllCacheTasks Cache {..} = liftIO $ atomically $ waitLock queueLock Released
 
-cacheSong :: (MonadIO m, MonadReader Cache m) => Song.Song -> m ()
-cacheSong song = do
+cacheSong :: (MonadIO m, MonadReader Cache m) => Song.Song -> String -> m ()
+cacheSong song url = do
   Cache {..} <- ask
-  liftIO $ atomically $ writeTQueue songQueue song
+  liftIO $ atomically $ writeTQueue songQueue (song { Song.url = Just url })
 
 deleteSong :: (MonadIO m, MonadReader Cache m) => Song.Song -> m ()
 deleteSong Song.Song {..} = do
@@ -145,7 +146,7 @@ fetchCache = do
     case song of
       Just (SongWithLyrics song _) -> do
         let url = take (length fullPath - 4) fullPath ++ "mp3"
-        return $ Just song { Song.url = url }
+        return $ Just song { Song.url = Just url }
       Nothing -> return Nothing
   return $ map fromJust $ filter isJust songs
   where
@@ -158,9 +159,12 @@ fetchCache = do
       mp3Exists <- doesFileExist (dir ++ "/" ++ hashPath ++ ".mp3")
       return $ isFile && validFile && mp3Exists
 
+fetchUrl :: (MonadIO m, MonadReader Session m) => Song.Song -> m (Maybe String)
+fetchUrl Song.Song {..} = return url
+
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do
-  song <- liftIO $ JSON.decode <$> BL.readFile (take (length url - 3) url ++ "json")
+  song <- liftIO $ JSON.decode <$> BL.readFile (take (length (fromJust url) - 3) (fromJust url) ++ "json")
   return $ case song of
     Just (SongWithLyrics _ lyrics) -> lyrics
     Nothing -> def

@@ -9,6 +9,7 @@ module FM.NetEase (
 , fetchRecommend
 , fetchPlayLists
 , fetchPlayList
+, fetchUrl
 , fetchLyrics
 ) where
 
@@ -215,6 +216,21 @@ fetchPlayList id = do
   session <- ask
   body <- sendRequest session Get "http://music.163.com/api/playlist/detail" (FetchPlayList id)
   validateJSON (decodePlayList body) return
+
+fetchUrl :: (MonadIO m, MonadReader Session m) => Song.Song -> m (Maybe String)
+fetchUrl Song.Song {..} = do
+  session@Session {..} <- ask
+  csrf <- liftIO $ readIORef sessionCsrf
+  let url = "http://music.163.com/weapi/song/enhance/player/url?csrf_token=" ++ csrf
+  request <- encryptQuery $ encodeJSON $ JSON.object
+    [ ("ids", JSON.toJSON [uid])
+    , ("br", JSON.toJSON (320000 :: Int))
+    , ("csrf_token", JSON.toJSON csrf)
+    ]
+  body <- sendRequest session Post url request
+  case decodeUrl body of
+    Right [url] -> return (Just url)
+    _ -> return Nothing
 
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do

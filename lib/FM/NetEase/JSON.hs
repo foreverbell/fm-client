@@ -6,6 +6,7 @@ module FM.NetEase.JSON (
 , decodeRecommend
 , decodePlayList
 , decodePlayLists
+, decodeUrl
 , decodeLyrics
 , decodeUserId
 ) where
@@ -43,8 +44,9 @@ parseSongList = onArray $ \v -> mapM parseSong (V.toList v)
 
 parseSong :: JSON.Value -> JSON.Parser Song.Song
 parseSong = onObject $ \v -> do
-  -- TODO: HEAD this url to check if file really exists.
-  url <- do
+  let url = Nothing
+{-
+  url <- Just <$> do
     urls <- forM ["hMusic", "mMusic", "lMusic"] $ \m -> do
       node <- v .:? m
       case node of
@@ -56,6 +58,7 @@ parseSong = onObject $ \v -> do
     case msum urls of
       Just url -> return url
       Nothing -> v .: "mp3Url"
+-}
   title <- v .: "name"
   uid <- v .: "id"
   artists <- parseArtists =<< (v .: "artists")
@@ -95,6 +98,17 @@ instance JSON.FromJSON PlayLists where
 decodePlayLists :: BS.ByteString -> Either String [(Int, String)]
 decodePlayLists bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
   where unwrap (PlayLists xs) = xs
+
+newtype Url = Url [String]
+
+instance JSON.FromJSON Url where
+  parseJSON = onObject $ \v -> v .: "data" >>= parse
+    where parse = onArray $ \v -> Url <$> mapM parse2 (V.toList v)
+          parse2 = onObject $ \v -> v .: "url"
+
+decodeUrl :: BS.ByteString -> Either String [String]
+decodeUrl bs = unwrap <$> JSON.eitherDecode (BL.fromStrict bs)
+  where unwrap (Url url) = url
 
 newtype Lyrics = Lyrics [String]
 

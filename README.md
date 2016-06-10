@@ -10,7 +10,23 @@
 $ sudo apt-get install mpg123 aria2
 $ git clone https://github.com/foreverbell/fm-client
 $ cd fm-client
-$ stack init && stack install
+$ cabal install
+$ fm
+```
+
+建议使用 stack，`stack.yaml` 添加 `extra-deps` 项使用 `brick-0.6.4`。
+
+```yaml
+flags: {}
+extra-package-dbs: []
+extra-deps: 
+- brick-0.6.4
+- vty-5.5.0
+resolver: lts-5.18
+```
+
+```bash
+$ stack install
 $ fm
 ```
 

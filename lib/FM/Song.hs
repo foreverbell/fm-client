@@ -18,7 +18,7 @@ data Song = Song {
 , title   :: String
 , artists :: [String]
 , album   :: String
-, url     :: String
+, url     :: Maybe String
 }
 
 newtype Lyrics = Lyrics [(Double, String)]
@@ -29,7 +29,7 @@ instance Show Song where
                            , "  title = " ++ title ++ ","
                            , "  artists = " ++ dumpList artists ++ ","
                            , "  album = " ++ album ++ ","
-                           , "  url = " ++ url ++ ","
+                           , "  url = " ++ show url ++ ","
                            , "}"
                            ]
     where

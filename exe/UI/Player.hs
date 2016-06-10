@@ -20,6 +20,7 @@ import           Control.Monad.STM (atomically)
 import           Data.Default.Class
 import           Data.Foldable (toList)
 import           Data.List (intercalate)
+import           Data.Maybe (isJust, fromJust)
 import qualified Data.Sequence as S
 import           Text.Printf (printf)
 import           System.Random (randomRIO)
@@ -67,6 +68,11 @@ fetch state@State {..} = case source of
   NetEasePlayList id _ -> liftSession state (NetEase.fetchPlayList id)
   LocalCache -> liftSession state Cache.fetchCache
 
+fetchUrl :: (MonadIO m) => State -> Song.Song -> m (Maybe String)
+fetchUrl state@State {..} song = if isLocal source
+  then liftSession state (Cache.fetchUrl song)
+  else liftSession state (NetEase.fetchUrl song)
+
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state@State {..} song = if isLocal source
   then liftSession state (Cache.fetchLyrics song)
@@ -84,7 +90,7 @@ play state@State {..}
       let onTerminate e = when e (postEvent (UserEventPending False))
       let onProgress p = postEvent (UserEventUpdateProgress p)
       let onLyrics l = postEvent (UserEventUpdateLyrics l)
-      liftPlayer state $ FM.play (playSequence `S.index` (currentIndex - 1)) (fetchLyrics state) onTerminate onProgress onLyrics
+      liftPlayer state $ FM.play (playSequence `S.index` (currentIndex - 1)) (fetchUrl state) (fetchLyrics state) onTerminate onProgress onLyrics
       return state { focusedIndex = currentIndex
                    , stopped = False
                    , progress = (0, 0)
@@ -125,8 +131,10 @@ toggleMute state@State {..} = do
 
 cacheSong :: (MonadIO m) => State -> m State
 cacheSong state@State {..} = do
-  when (focusedIndex /= 0 && not (isLocal source)) $ liftCache state $ do
-    FM.cacheSong $ playSequence `S.index` (focusedIndex - 1)
+  when (focusedIndex /= 0 && not (isLocal source)) $ do
+    let song = playSequence `S.index` (focusedIndex - 1)
+    url <- fetchUrl state song
+    when (isJust url) $ liftCache state $ FM.cacheSong song (fromJust url)
   return state
 
 deleteSong :: (MonadIO m) => State -> m State
