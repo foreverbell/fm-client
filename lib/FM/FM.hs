@@ -1,4 +1,4 @@
-module FM.FM ( 
+module FM.FM (
   runCache, runSession, runPlayer
 
 , initPlayer

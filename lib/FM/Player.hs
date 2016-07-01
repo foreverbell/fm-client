@@ -86,7 +86,7 @@ play song@Song.Song {..} fetchUrl fetchLyrics onTerminate onProgress onLyrics = 
 
   let
     notifyLyrics :: Song.Lyrics -> Double -> Notify String -> IO Song.Lyrics
-    notifyLyrics (Song.Lyrics lyrics) time notify = Song.Lyrics <$> 
+    notifyLyrics (Song.Lyrics lyrics) time notify = Song.Lyrics <$>
       case span (\l -> fst l <= time) lyrics of
         ([], restLyrics) -> return restLyrics
         (curLyrics, restLyrics) -> do

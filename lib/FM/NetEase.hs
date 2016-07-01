@@ -138,16 +138,16 @@ data NetEaseQuery = FetchLyrics Song.SongId
                   | EncryptData BS.ByteString BS.ByteString
 
 instance IsQuery NetEaseQuery where
-  fromQuery (EncryptData text key) = HTTP.renderSimpleQuery False 
+  fromQuery (EncryptData text key) = HTTP.renderSimpleQuery False
     [ ("params", text), ("encSecKey", key) ]
 
-  fromQuery (FetchLyrics id) = HTTP.renderSimpleQuery False 
+  fromQuery (FetchLyrics id) = HTTP.renderSimpleQuery False
     [ ("os", "osx"), ("id", BS8.pack (show id)), ("lv", "-1"), ("kv", "-1"), ("tv", "-1") ]
 
-  fromQuery (FetchPlayLists uid) = HTTP.renderSimpleQuery False 
+  fromQuery (FetchPlayLists uid) = HTTP.renderSimpleQuery False
     [ ("offset", "0"), ("limit", "1000"), ("uid", BS8.pack (show uid)) ]
 
-  fromQuery (FetchPlayList id) = HTTP.renderSimpleQuery False 
+  fromQuery (FetchPlayList id) = HTTP.renderSimpleQuery False
     [ ("id", BS8.pack (show id)) ]
 
 createSecretKey :: (MonadIO m) => Int -> m BS.ByteString
@@ -192,7 +192,7 @@ fetchRecommend = do
   session@Session {..} <- ask
   csrf <- liftIO $ readIORef sessionCsrf
   let url = "http://music.163.com/weapi/v1/discovery/recommend/songs?csrf_token=" ++ csrf
-  request <- encryptQuery $ encodeJSON $ JSON.object 
+  request <- encryptQuery $ encodeJSON $ JSON.object
     [ ("offset", JSON.toJSON (0 :: Int))
     , ("total", JSON.toJSON True)
     , ("limit", JSON.toJSON (20 :: Int))

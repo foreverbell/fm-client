@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module UI.Extra ( 
+module UI.Extra (
   defaultAttributeMap
 , mkFocused, mkUnfocused
 , mkYellow

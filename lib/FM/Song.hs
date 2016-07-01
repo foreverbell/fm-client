@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module FM.Song ( 
+module FM.Song (
   SongId
 , Song (..)
 , Lyrics (..)
@@ -63,5 +63,5 @@ parseLyrics = Lyrics . sort . concatMap (either (const []) id . runParser parser
         char ':'
         ss <- number
         return $ mm * 60 + ss
-      body <- manyTill anyToken eof 
+      body <- manyTill anyToken eof
       return $ zip times $ repeat body

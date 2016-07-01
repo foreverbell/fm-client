@@ -28,7 +28,7 @@ main = do
   netEaseSession <- newIORef Nothing
   cache <- initCache =<< getCache
   evalContT $ do
-    source <- Menu.menuSelection [ NetEaseFM, NetEasePublicFM, NetEaseDailyRecommendation, NetEasePlayLists, LocalCache ] Nothing "播放源"
+    source <- Menu.menuSelection [ NetEaseFM, NetEaseDailyRecommendation, NetEasePlayLists, LocalCache ] Nothing "播放源"
     session <- Login.login source netEaseSession cache
     case source of
       NetEasePlayLists -> do

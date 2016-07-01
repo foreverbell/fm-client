@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module UI.Login ( 
+module UI.Login (
   login
 ) where
 
@@ -51,7 +51,7 @@ data EditorType = UserNameEditor | PasswordEditor
 
 type NetEaseSavedSession = IORef (Maybe SomeSession)
 
-data State = State { 
+data State = State {
   currentEditor  :: EditorType
 , userNameEditor :: UI.Editor
 , passwordEditor :: UI.Editor

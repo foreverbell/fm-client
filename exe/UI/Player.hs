@@ -44,7 +44,7 @@ data State = State {
 , currentIndex  :: Int
 , focusedIndex  :: Int
 , progress      :: (Double, Double)
-, currentLyrics :: String 
+, currentLyrics :: String
 , postEvent     :: Event -> IO ()
 , pendingMasked :: Bool
 }
@@ -62,7 +62,6 @@ liftPlayer State {..} m = liftIO $ runPlayer player m
 fetch :: (MonadIO m) => State -> m [Song.Song]
 fetch state@State {..} = case source of
   NetEaseFM -> liftSession state NetEase.fetchFM
-  NetEasePublicFM -> liftSession state NetEase.fetchFM
   NetEaseDailyRecommendation -> liftSession state NetEase.fetchRecommend
   NetEasePlayLists -> undefined
   NetEasePlayList id _ -> liftSession state (NetEase.fetchPlayList id)
@@ -71,7 +70,11 @@ fetch state@State {..} = case source of
 fetchUrl :: (MonadIO m) => State -> Song.Song -> m (Maybe String)
 fetchUrl state@State {..} song = if isLocal source
   then liftSession state (Cache.fetchUrl song)
-  else liftSession state (NetEase.fetchUrl song)
+  else do
+    localPath <- liftCache state (Cache.lookupCache (Song.uid song))
+    case localPath of
+      Just path -> return $ Just path
+      Nothing -> liftSession state (NetEase.fetchUrl song)
 
 fetchLyrics :: (MonadIO m) => State -> Song.Song -> m Song.Lyrics
 fetchLyrics state@State {..} song = if isLocal source
@@ -94,7 +97,7 @@ play state@State {..}
       return state { focusedIndex = currentIndex
                    , stopped = False
                    , progress = (0, 0)
-                   , currentLyrics = [] 
+                   , currentLyrics = []
                    , pendingMasked = False }
 
 pause :: (MonadIO m) => State -> m State
@@ -156,17 +159,17 @@ musicPlayerDraw State {..} = [ui]
 
     formatTime time = printf "%02d:%02d" minute second :: String
       where (minute, second) = floor time `quotRem` 60 :: (Int, Int)
-    
+
     ui = UI.vBox [UI.separator, title , UI.separator, bar1, UI.separator, bar2, UI.separator, lyrics, UI.separator, playList]
 
     title = UI.mkYellow $ UI.hCenter $ UI.str body
-      where 
+      where
         body | stopped = "[停止]"
              | otherwise = formatSong $ playSequence `S.index` (currentIndex - 1)
 
     bar1 | stopped = UI.separator
          | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ printf "[%s] (%s/%s)" (make '>' total occupied) (formatTime cur) (formatTime len)
-      where 
+      where
         (len, cur) = progress
         ratio = if len == 0 then 0 else cur / len
         total = 35 :: Int
@@ -229,19 +232,19 @@ musicPlayerEvent state@State {..} event = case event of
           play state { currentIndex = focusedIndex }
       Stopped -> play state { currentIndex = focusedIndex }
 
-  VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 0 (focusedIndex - 1) } 
+  VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 0 (focusedIndex - 1) }
 
   VtyEvent (UI.EvKey UI.KDown []) -> do
     let needMore = focusedIndex == S.length playSequence && playMode == Stream
     state@State {..} <- if needMore then liftIO (fetchMore state) else return state
-    UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) } 
+    UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) }
 
   VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< setVolume state (-10)
 
   VtyEvent (UI.EvKey (UI.KChar '=') []) -> UI.continue =<< setVolume state 10
-  
+
   VtyEvent (UI.EvKey (UI.KChar 'm') []) -> UI.continue =<< toggleMute state
-  
+
   VtyEvent (UI.EvKey (UI.KChar 'n') []) -> do
     state <- stop state
     liftIO $ postEvent (UserEventPending True)

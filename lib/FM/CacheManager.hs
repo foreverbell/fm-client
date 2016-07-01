@@ -6,9 +6,10 @@ module FM.CacheManager (
   MonadCache, runCache
 , Cache
 , initCache
+, waitAllCacheTasks
 , cacheSong
 , deleteSong
-, waitAllCacheTasks
+, lookupCache
 , initSession
 , fetchCache
 , fetchUrl
@@ -70,7 +71,7 @@ instance JSON.FromJSON SongWithLyrics where
     return $ SongWithLyrics Song.Song {..} lyrics
 
 instance JSON.ToJSON SongWithLyrics where
-  toJSON (SongWithLyrics Song.Song {..} (Song.Lyrics lyrics)) = 
+  toJSON (SongWithLyrics Song.Song {..} (Song.Lyrics lyrics)) =
     JSON.object [ "uid" .= uid
                 , "title" .= title
                 , "album" .= album
@@ -97,7 +98,13 @@ initCache cachePath = do
       when (state == Released) (acquireLock queueLock)
       return result
     let hashPath = hashSongId (show uid)
-    (_, outHandle, errHandle, processHandle) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false", "-d", cachePath, "-o", hashPath ++ ".mp3", fromJust url ] Nothing Nothing
+    (_, outHandle, errHandle, processHandle) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false"
+                                                                               , "-d"
+                                                                               , cachePath
+                                                                               , "-o"
+                                                                               , hashPath ++ ".mp3"
+                                                                               , fromJust url ]
+                                                                               Nothing Nothing
     exitCode <- waitForProcess processHandle
     hClose outHandle
     hClose errHandle
@@ -129,6 +136,18 @@ deleteSong Song.Song {..} = do
   void $ forM [".mp3", ".json"] $ \suffix -> do
     let fullPath = path ++ suffix
     liftIO (try $ removeFile fullPath :: IO (Either SomeException ()))
+
+lookupCache :: (MonadIO m, MonadReader Cache m) => Int -> m (Maybe String)
+lookupCache uid = do
+  Cache {..} <- ask
+  let fullPrefix = cachePath ++ "/" ++ hashSongId (show uid)
+  let mp3Path = fullPrefix ++ ".mp3"
+  let jsonPath = fullPrefix ++ ".json"
+  mp3Exists <- liftIO $ doesFileExist mp3Path
+  jsonExists <- liftIO $ doesFileExist jsonPath
+  return $ if mp3Exists && jsonExists
+             then Just mp3Path
+             else Nothing
 
 data Session = Session {
   sessionCachePath :: FilePath

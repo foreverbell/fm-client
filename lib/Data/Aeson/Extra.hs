@@ -1,4 +1,4 @@
-module Data.Aeson.Extra ( 
+module Data.Aeson.Extra (
   encodeJSON
 , onObject
 , onArray

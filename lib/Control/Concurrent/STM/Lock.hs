@@ -1,4 +1,4 @@
-module Control.Concurrent.STM.Lock ( 
+module Control.Concurrent.STM.Lock (
   Lock
 , LockState (..)
 , newLock

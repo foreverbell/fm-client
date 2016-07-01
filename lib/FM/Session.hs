@@ -1,7 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module FM.Session ( 
+module FM.Session (
   MonadSession, runSession
 , IsSession
 , SomeSession (..)

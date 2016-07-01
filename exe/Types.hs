@@ -18,7 +18,6 @@ class Show1 a where
   show1 :: a -> String
 
 data MusicSource = NetEaseFM
-                 | NetEasePublicFM
                  | NetEaseDailyRecommendation
                  | NetEasePlayLists
                  | NetEasePlayList Int String
@@ -30,7 +29,6 @@ data PlayMode = Stream | LoopOne | LoopAll | Shuffle
 
 instance Show1 MusicSource where
   show1 NetEaseFM = "网易云音乐私人兆赫"
-  show1 NetEasePublicFM = "网易云音乐公共兆赫"
   show1 NetEaseDailyRecommendation = "网易云音乐每日歌曲推荐"
   show1 NetEasePlayLists = "网易云音乐用户歌单"
   show1 (NetEasePlayList _ title) = title
@@ -48,10 +46,8 @@ isLocal _ = False
 
 requireLogin :: MusicSource -> Bool
 requireLogin LocalCache = False
-requireLogin NetEasePublicFM = False
 requireLogin _ = True
 
 defaultPlayMode :: MusicSource -> PlayMode
 defaultPlayMode NetEaseFM = Stream
-defaultPlayMode NetEasePublicFM = Stream
 defaultPlayMode _ = LoopAll

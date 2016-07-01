@@ -1,5 +1,6 @@
-module FM.Cache ( 
+module FM.Cache (
   initSession
+, lookupCache
 , fetchCache
 , fetchUrl
 , fetchLyrics

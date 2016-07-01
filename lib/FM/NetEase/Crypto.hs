@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module FM.NetEase.Crypto ( 
+module FM.NetEase.Crypto (
   toHex
 , encryptAES
 , encryptRSA
@@ -31,7 +31,7 @@ encryptAES key text = encrypt key (encrypt ("0CoJUm6Qyw8W8jud" :: BS.ByteString)
       where
         cipher = fromJust $ C.maybeCryptoError (C.cipherInit key) :: C.AES128
         plain = text `mappend` BS.replicate k (toEnum k)
-          where k = 16 - BS.length text `mod` 16 
+          where k = 16 - BS.length text `mod` 16
         iv = fromJust $ C.makeIV ("0102030405060708" :: BS.ByteString)
 
 encryptRSA :: BS.ByteString -> BS.ByteString
@@ -53,7 +53,7 @@ encryptRSA text = zfill 256 $ toHex $ (base^publicKey) `mod` modulo
                            ] :: Integer
 
 encryptSongId :: String -> String
-encryptSongId id = flip map hashValue $ 
+encryptSongId id = flip map hashValue $
   \c -> case c of
     '/' -> '_'
     '+' -> '-'
