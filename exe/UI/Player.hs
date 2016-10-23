@@ -46,7 +46,7 @@ data State = State {
 , progress      :: (Double, Double)
 , currentLyrics :: String
 , postEvent     :: Event -> IO ()
-, pendingMasked :: Bool
+, autoProceed   :: Bool
 }
 
 data Event = VtyEvent UI.Event
@@ -98,17 +98,17 @@ play state@State {..}
                    , stopped = False
                    , progress = (0, 0)
                    , currentLyrics = []
-                   , pendingMasked = False }
+                   , autoProceed = True }
 
 pause :: (MonadIO m) => State -> m State
 pause state = do
   liftPlayer state FM.pause
-  return state { pendingMasked = True }
+  return state { autoProceed = False }
 
 resume :: (MonadIO m) => State -> m State
 resume state = do
   liftPlayer state FM.resume
-  return state { pendingMasked = False }
+  return state { autoProceed = True }
 
 stop :: (MonadIO m) => State -> m State
 stop state = do
@@ -116,7 +116,7 @@ stop state = do
   return state { stopped = True
                , progress = (0, 0)
                , currentLyrics = []
-               , pendingMasked = True }
+               , autoProceed = False }
 
 setVolume :: (MonadIO m) => State -> Int -> m State
 setVolume state@State {..} d = do
@@ -194,11 +194,10 @@ musicPlayerEvent :: State -> Event -> UI.EventM (UI.Next State)
 musicPlayerEvent state@State {..} event = case event of
   UserEventFetchMore -> UI.continue =<< fetchMore state
 
-  UserEventPending ignoreMask -> do
+  UserEventPending forceProceed -> do
     pState <- liftIO $ atomically $ readTVar (FM.playerState player)
-    if (not ignoreMask && pendingMasked) || not (isStopped pState)
-      then UI.continue state
-      else do
+    if (forceProceed || autoProceed) && (isStopped pState)
+      then do
         let needMore = currentIndex == S.length playSequence && playMode == Stream
         state@State {..} <- if needMore then fetchMore state else return state
         nextIndex <- case playMode of
@@ -207,6 +206,7 @@ musicPlayerEvent state@State {..} event = case event of
           LoopAll -> return $ if currentIndex + 1 > S.length playSequence then 1 else currentIndex + 1
           Shuffle -> liftIO $ randomRIO (1, S.length playSequence)
         UI.continue =<< play state { currentIndex = nextIndex }
+      else UI.continue state
 
   UserEventUpdateProgress p -> UI.continue state { progress = p }
 
@@ -288,7 +288,7 @@ musicPlayer_ source session cache = void $ do
                     , progress = (0, 0)
                     , currentLyrics = []
                     , postEvent = postEvent
-                    , pendingMasked = True
+                    , autoProceed = False
                     }
   postEvent UserEventFetchMore
   UI.customMain (UI.mkVty def) chan musicPlayerApp state
