@@ -73,8 +73,8 @@ type FetchUrl = Song.Song -> IO (Maybe String)
 type FetchLyrics = Song.Song -> IO Song.Lyrics
 type Notify a = a -> IO ()
 
-play :: (MonadIO m, MonadReader Player m) => Song.Song -> FetchUrl -> FetchLyrics -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
-play song@Song.Song {..} fetchUrl fetchLyrics onTerminate onProgress onLyrics = do
+play :: (MonadIO m, MonadReader Player m) => Song.Song -> FetchUrl -> FetchLyrics -> Notify () -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
+play song@Song.Song {..} fetchUrl fetchLyrics onBegin onTerminate onProgress onLyrics = do
   Player {..} <- ask
   (inHandle, outHandle, errHandle, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
@@ -95,6 +95,10 @@ play song@Song.Song {..} fetchUrl fetchLyrics onTerminate onProgress onLyrics = 
 
     loop :: Bool -> (Double, Double, Maybe Song.Lyrics) -> String -> IO ()
     loop _ (len, cur, _) "@P 0" = onProgress (len, cur)
+
+    loop _ _ "@P 2" = do
+      onBegin ()
+      continue $ loop False (0, 0, Nothing)
 
     loop True _ out@('@':'F':_) = do
       let len = read (words out !! 4)

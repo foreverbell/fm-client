@@ -11,19 +11,17 @@ module FM.NetEase.JSON (
 , decodeUserId
 ) where
 
-import           Control.Monad (msum, forM)
+import           Control.Monad (forM)
 import qualified Data.Aeson as JSON
-import           Data.Aeson ((.:), (.:?))
+import           Data.Aeson ((.:))
 import           Data.Aeson.Extra
 import qualified Data.Aeson.Types as JSON
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 import qualified Data.Text as T
-import           Text.Printf (printf)
 
 import qualified FM.Song as Song
-import           FM.NetEase.Crypto (encryptSongId)
 
 newtype FM = FM [Song.Song]
 newtype Recommend = Recommend [Song.Song]
@@ -45,20 +43,6 @@ parseSongList = onArray $ \v -> mapM parseSong (V.toList v)
 parseSong :: JSON.Value -> JSON.Parser Song.Song
 parseSong = onObject $ \v -> do
   let url = Nothing
-{-
-  url <- Just <$> do
-    urls <- forM ["hMusic", "mMusic", "lMusic"] $ \m -> do
-      node <- v .:? m
-      case node of
-        Just node -> flip onObject node $ \v -> do
-          dfsId <- v .: "dfsId" :: JSON.Parser Int
-          let encId = encryptSongId (show dfsId)
-          return $ Just (printf "http://m1.music.126.net/%s/%d.mp3" encId dfsId :: String)
-        Nothing -> return Nothing
-    case msum urls of
-      Just url -> return url
-      Nothing -> v .: "mp3Url"
--}
   title <- v .: "name"
   uid <- v .: "id"
   artists <- parseArtists =<< (v .: "artists")

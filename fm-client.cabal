@@ -64,6 +64,7 @@ executable fm
                      , transformers
                      , mtl
                      , directory
+                     , process
                      , stm
                      , random
                      , containers

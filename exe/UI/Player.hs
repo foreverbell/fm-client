@@ -24,6 +24,7 @@ import           Data.Maybe (isJust, fromJust)
 import qualified Data.Sequence as S
 import           Text.Printf (printf)
 import           System.Random (randomRIO)
+import           System.Process (callProcess)
 
 import qualified FM.FM as FM
 import qualified FM.Song as Song
@@ -90,10 +91,11 @@ play :: (MonadIO m) => State -> m State
 play state@State {..}
   | currentIndex == 0 = return state
   | otherwise = do
+      let onBegin () = let Song.Song {..} = playSequence `S.index` (currentIndex - 1) in callProcess "notify-send" [title, intercalate " / " artists ++ "\n" ++ album]
       let onTerminate e = when e (postEvent (UserEventPending False))
       let onProgress p = postEvent (UserEventUpdateProgress p)
       let onLyrics l = postEvent (UserEventUpdateLyrics l)
-      liftPlayer state $ FM.play (playSequence `S.index` (currentIndex - 1)) (fetchUrl state) (fetchLyrics state) onTerminate onProgress onLyrics
+      liftPlayer state $ FM.play (playSequence `S.index` (currentIndex - 1)) (fetchUrl state) (fetchLyrics state) onBegin onTerminate onProgress onLyrics
       return state { focusedIndex = currentIndex
                    , stopped = False
                    , progress = (0, 0)
