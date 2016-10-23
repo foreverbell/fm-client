@@ -96,9 +96,9 @@ play song@Song.Song {..} fetchUrl fetchLyrics onBegin onTerminate onProgress onL
     loop :: Bool -> (Double, Double, Maybe Song.Lyrics) -> String -> IO ()
     loop _ (len, cur, _) "@P 0" = onProgress (len, cur)
 
-    loop _ _ "@P 2" = do
+    loop True (0, 0, Nothing) "@P 2" = do
       onBegin ()
-      continue $ loop False (0, 0, Nothing)
+      continue $ loop True (0, 0, Nothing)
 
     loop True _ out@('@':'F':_) = do
       let len = read (words out !! 4)
