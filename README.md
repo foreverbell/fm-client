@@ -1,4 +1,4 @@
-# fm-client
+# netease-fm
 
 网易云音乐客户端。用 Haskell 编写。
 
@@ -8,8 +8,8 @@
 
 ```bash
 $ sudo apt-get install mpg123 aria2
-$ git clone https://github.com/foreverbell/fm-client
-$ cd fm-client
+$ git clone https://github.com/foreverbell/netease-fm
+$ cd netease-fm
 $ cabal install
 $ fm
 ```
@@ -22,7 +22,7 @@ extra-package-dbs: []
 extra-deps: 
 - brick-0.6.4
 - vty-5.5.0
-resolver: lts-5.18
+resolver: lts-6.27
 ```
 
 ```bash
