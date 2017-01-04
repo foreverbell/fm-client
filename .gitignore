@@ -1,3 +1,6 @@
+# cabal
+dist/
+
 # vim
 *swp
 
