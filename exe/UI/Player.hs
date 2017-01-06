@@ -91,7 +91,8 @@ play :: (MonadIO m) => State -> m State
 play state@State {..}
   | currentIndex == 0 = return state
   | otherwise = do
-      let onBegin () = let Song.Song {..} = playSequence `S.index` (currentIndex - 1) in callProcess "notify-send" [title, intercalate " / " artists ++ "\n" ++ album]
+      let onBegin () = let Song.Song {..} = playSequence `S.index` (currentIndex - 1)
+                        in callProcess "notify-send" [title ++ "\n\n" ++ intercalate " / " artists ++ "\n\n" ++ album]
       let onTerminate e = when e (postEvent (UserEventPending False))
       let onProgress p = postEvent (UserEventUpdateProgress p)
       let onLyrics l = postEvent (UserEventUpdateLyrics l)
