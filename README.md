@@ -11,7 +11,7 @@ $ sudo apt-get install mpg123 aria2
 $ git clone https://github.com/foreverbell/netease-fm
 $ cd netease-fm
 $ cabal install
-$ fm
+$ netease-fm
 ```
 
 建议使用 stack，`stack.yaml` 添加 `extra-deps` 项使用 `brick-0.6.4`。
@@ -27,7 +27,7 @@ resolver: lts-6.27
 
 ```bash
 $ stack install
-$ fm
+$ netease-fm
 ```
 
 ## 快捷键
@@ -43,3 +43,7 @@ $ fm
 | -             | 减小音量              |
 | =             | 增大音量              |
 | m             | 静音 / 取消静音       |
+
+## 屏幕快照
+
+![](https://raw.githubusercontent.com/foreverbell/netease-fm/master/SNAPSHOT.png)
