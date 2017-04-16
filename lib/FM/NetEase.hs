@@ -99,14 +99,14 @@ sendRequest Session {..} method url query = liftIO $ case method of
                      }
 
     post saveCookies = do
-      initialRequest <- initRequest =<< HTTP.parseUrl url
+      initialRequest <- initRequest =<< HTTP.parseRequest url
       send saveCookies $ initialRequest { HTTP.method = "POST"
                                         , HTTP.requestBody = HTTP.RequestBodyBS $ fromQuery query
                                         }
 
     get = do
       let action = mconcat [ url, "?", BS8.unpack $ fromQuery query ]
-      initialRequest <- initRequest =<< HTTP.parseUrl action
+      initialRequest <- initRequest =<< HTTP.parseRequest action
       send False $ initialRequest { HTTP.method = "GET" }
 
     send saveCookies request = do

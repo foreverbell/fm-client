@@ -42,7 +42,7 @@ library
                      , http-client
                      , http-client-tls
                      , http-types
-                     , aeson
+                     , aeson >= 1
                      , base64-bytestring
                      , cryptonite
   exposed-modules:

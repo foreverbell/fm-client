@@ -22,7 +22,7 @@ extra-package-dbs: []
 extra-deps: 
 - brick-0.6.4
 - vty-5.5.0
-resolver: lts-6.27
+resolver: lts-8.10
 ```
 
 ```bash
