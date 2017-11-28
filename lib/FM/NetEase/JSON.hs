@@ -27,26 +27,32 @@ newtype FM = FM [Song.Song]
 newtype Recommend = Recommend [Song.Song]
 newtype PlayList = PlayList [Song.Song]
 
+data PlayListVersion = PlayListV1 | PlayListV3
+
 instance JSON.FromJSON FM where
-  parseJSON = onObject $ \v -> FM <$> (v .: "data" >>= parseSongList)
+  parseJSON = onObject $ \v -> FM <$> (v .: "data" >>= parseSongList PlayListV1)
 
 instance JSON.FromJSON Recommend where
-  parseJSON = onObject $ \v ->  Recommend <$> (v .: "recommend" >>= parseSongList)
+  parseJSON = onObject $ \v ->  Recommend <$> (v .: "recommend" >>= parseSongList PlayListV1)
 
 instance JSON.FromJSON PlayList where
-  parseJSON = onObject $ \v -> PlayList <$> (v .: "result" >>= parse)
-    where parse = onObject $ \v -> v .: "tracks" >>= parseSongList
+  parseJSON = onObject $ \v -> PlayList <$> (v .: "playlist" >>= parse)
+    where parse = onObject $ \v -> v .: "tracks" >>= parseSongList PlayListV3
 
-parseSongList :: JSON.Value -> JSON.Parser [Song.Song]
-parseSongList = onArray $ \v -> mapM parseSong (V.toList v)
+parseSongList :: PlayListVersion -> JSON.Value -> JSON.Parser [Song.Song]
+parseSongList ver = onArray $ \v -> mapM (parseSong ver) (V.toList v)
 
-parseSong :: JSON.Value -> JSON.Parser Song.Song
-parseSong = onObject $ \v -> do
+parseSong :: PlayListVersion -> JSON.Value -> JSON.Parser Song.Song
+parseSong ver = onObject $ \v -> do
   let url = Nothing
+  let (arKey, alKey) =
+        case ver of
+          PlayListV1 -> ("artists", "album")
+          PlayListV3 -> ("ar", "al")
   title <- v .: "name"
   uid <- v .: "id"
-  artists <- parseArtists =<< (v .: "artists")
-  album <- parseAlbum =<< (v .: "album")
+  artists <- parseArtists =<< (v .: arKey)
+  album <- parseAlbum =<< (v .: alKey)
   return Song.Song {..}
 
 parseArtists :: JSON.Value -> JSON.Parser [String]

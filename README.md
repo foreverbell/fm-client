@@ -14,7 +14,7 @@ $ cabal install
 $ netease-fm
 ```
 
-建议使用 stack，`stack.yaml` 添加 `extra-deps` 项使用 `brick-0.6.4`。
+建议使用 `stack`，`stack.yaml` 添加 `extra-deps` 项使用 `brick-0.6.4`。
 
 ```yaml
 flags: {}
@@ -22,7 +22,7 @@ extra-package-dbs: []
 extra-deps: 
 - brick-0.6.4
 - vty-5.5.0
-resolver: lts-8.10
+resolver: lts-9.9
 ```
 
 ```bash

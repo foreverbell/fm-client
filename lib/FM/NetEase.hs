@@ -85,14 +85,15 @@ sendRequest Session {..} method url query = liftIO $ case method of
   where
     initRequest request = do
       cookies <- liftIO $ readIORef sessionCookies
-      return request { HTTP.requestHeaders = [ (HTTP.hAccept, "*/*")
-                                             , (HTTP.hAcceptEncoding, "gzip,deflate,sdch")
-                                             , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
-                                             , (HTTP.hConnection, "keep-alive")
-                                             , (HTTP.hContentType, "application/x-www-form-urlencoded")
-                                             , (HTTP.hHost, "music.163.com")
-                                             , (HTTP.hReferer, "http://music.163.com/search/")
-                                             ]
+      return request { HTTP.requestHeaders =
+                         [ (HTTP.hAccept, "*/*")
+                         , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
+                         , (HTTP.hConnection, "keep-alive")
+                         , (HTTP.hContentType, "application/x-www-form-urlencoded")
+                         , (HTTP.hHost, "music.163.com")
+                         , (HTTP.hReferer, "http://music.163.com")
+                         , (HTTP.hUserAgent, "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Win64; x64; Trident/6.0)")
+                         ]
                      , HTTP.cookieJar = Just cookies
                      , HTTP.secure = sessionSecure
                      , HTTP.port = if sessionSecure then 443 else 80
@@ -134,7 +135,6 @@ initSession sessionSecure = liftIO $ do
 
 data NetEaseQuery = FetchLyrics Song.SongId
                   | FetchPlayLists Int
-                  | FetchPlayList Int
                   | EncryptData BS.ByteString BS.ByteString
 
 instance IsQuery NetEaseQuery where
@@ -146,9 +146,6 @@ instance IsQuery NetEaseQuery where
 
   fromQuery (FetchPlayLists uid) = HTTP.renderSimpleQuery False
     [ ("offset", "0"), ("limit", "1000"), ("uid", BS8.pack (show uid)) ]
-
-  fromQuery (FetchPlayList id) = HTTP.renderSimpleQuery False
-    [ ("id", BS8.pack (show id)) ]
 
 createSecretKey :: (MonadIO m) => Int -> m BS.ByteString
 createSecretKey n = mconcat <$> replicateM n (toHex <$> liftIO (getStdRandom $ randomR (0 :: Int, 15)))
@@ -213,8 +210,16 @@ fetchPlayLists = do
 
 fetchPlayList :: (MonadIO m, MonadReader Session m) => Int -> m [Song.Song]
 fetchPlayList id = do
-  session <- ask
-  body <- sendRequest session Get "http://music.163.com/api/playlist/detail" (FetchPlayList id)
+  session@Session {..} <- ask
+  csrf <- liftIO $ readIORef sessionCsrf
+  let url = "http://music.163.com/weapi/v3/playlist/detail?csrf_token=" ++ csrf
+  request <- encryptQuery $ encodeJSON $ JSON.object
+    [ ("id", JSON.toJSON id)
+    , ("n", JSON.toJSON (1000 :: Int))
+    , ("total", JSON.toJSON True)
+    , ("csrf_token", JSON.toJSON csrf)
+    ]
+  body <- sendRequest session Post url request
   validateJSON (decodePlayList body) return
 
 fetchUrl :: (MonadIO m, MonadReader Session m) => Song.Song -> m (Maybe String)

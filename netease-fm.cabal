@@ -1,5 +1,5 @@
 name:                netease-fm
-version:             1.2.2
+version:             1.2.3
 synopsis:            NetEase Cloud Music FM client in Haskell.
 description:         NetEase Cloud Music FM client.
 homepage:            http://github.com/foreverbell/netease-fm#readme
