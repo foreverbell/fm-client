@@ -1,4 +1,5 @@
 module Control.Concurrent.STM.Lock (
+  -- * A wrapper of TMVar acts like a lock.
   Lock
 , LockState (..)
 , newLock

@@ -5,7 +5,7 @@ module FM.Player (
   MonadPlayer, runPlayer
 , PlayerState (..)
 , isStopped
-, Player (..)
+, Player, playerState, playerVolume, playerMuted
 , initPlayer
 , play
 , pause
@@ -14,18 +14,26 @@ module FM.Player (
 , updateVolume
 ) where
 
-import           Control.Concurrent (ThreadId, forkFinally, killThread, myThreadId, throwTo)
+import           Control.Concurrent ( ThreadId
+                                    , forkFinally
+                                    , killThread
+                                    , myThreadId
+                                    , throwTo)
 import           Control.Concurrent.Async (async, cancel, poll)
 import           Control.Concurrent.STM.Lock
 import           Control.Concurrent.STM.TMVar
 import           Control.Concurrent.STM.TVar
-import           Control.Exception (asyncExceptionFromException, AsyncException (..))
+import           Control.Exception ( asyncExceptionFromException
+                                   , AsyncException (..))
 import           Control.Monad.IO.Class
 import           Control.Monad.Reader
 import           Control.Monad.STM (atomically)
 import           Data.Maybe (isJust, fromJust)
 import           System.IO
-import           System.Process (ProcessHandle, runInteractiveProcess, waitForProcess, terminateProcess)
+import           System.Process ( ProcessHandle
+                                , runInteractiveProcess
+                                , waitForProcess
+                                , terminateProcess)
 
 import qualified FM.Song as Song
 
@@ -35,10 +43,11 @@ newtype MonadPlayer a = MonadPlayer (ReaderT Player IO a)
 runPlayer :: Player -> MonadPlayer a -> IO a
 runPlayer player (MonadPlayer m) = runReaderT m player
 
-data PlayerState = Playing Song.Song
-                 | Paused Song.Song
-                 | Stopped
+data PlayerState = Playing Song.Song  -- ^ The song is being played.
+                 | Paused Song.Song   -- ^ The song is paused.
+                 | Stopped            -- ^ No song is being played.
 
+-- | Returns true if the player is stopped.
 isStopped :: PlayerState -> Bool
 isStopped Stopped = True
 isStopped _ = False
@@ -47,9 +56,10 @@ data PlayerContext = PlayerContext {
   inHandle       :: Handle
 , outHandle      :: Handle
 , errHandle      :: Handle
-, processHandle  :: ProcessHandle
+, processHandle  :: ProcessHandle  -- ^ Handle of mpg123.
 , parentThreadId :: ThreadId
-, childThreadId  :: ThreadId
+, childThreadId  :: ThreadId       -- ^ The id of child thread which is taking
+                                   --   control of playing.
 }
 
 data Player = Player {
@@ -69,14 +79,30 @@ initPlayer = liftIO $ do
   playerLock <- newLockIO
   return Player {..}
 
+-- | The callback to fetch url.
 type FetchUrl = Song.Song -> IO (Maybe String)
+
+-- | The callback to fetch lyrics.
 type FetchLyrics = Song.Song -> IO Song.Lyrics
+
+-- | Notify callback.
 type Notify a = a -> IO ()
 
-play :: (MonadIO m, MonadReader Player m) => Song.Song -> FetchUrl -> FetchLyrics -> Notify () -> Notify Bool -> Notify (Double, Double) -> Notify String -> m ()
-play song@Song.Song {..} fetchUrl fetchLyrics onBegin onTerminate onProgress onLyrics = do
+-- | 'play' will block until the last played song is stopped.
+play :: (MonadIO m, MonadReader Player m) => Song.Song
+                                          -> FetchUrl
+                                          -> FetchLyrics
+                                          -> Notify ()
+                                          -> Notify Bool
+                                          -> Notify (Double, Double)
+                                          -> Notify String
+                                          -> m ()
+play song@Song.Song {..}
+     fetchUrl fetchLyrics
+     onBegin onTerminate onProgress onLyrics = do
   Player {..} <- ask
-  (inHandle, outHandle, errHandle, processHandle) <- liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
+  (inHandle, outHandle, errHandle, processHandle) <-
+    liftIO $ runInteractiveProcess "mpg123" ["-R"] Nothing Nothing
   let initHandle h = liftIO $ do
         hSetBinaryMode h False
         hSetBuffering h LineBuffering
@@ -119,7 +145,8 @@ play song@Song.Song {..} fetchUrl fetchLyrics onBegin onTerminate onProgress onL
 
     loop b ctx ('@':_) = continue $ loop b ctx
 
-    loop _ _ _ = return () -- encounter mpg123 internal error.
+    -- Encounter mpg123 internal error.
+    loop _ _ _ = return ()
 
     continue :: (String -> IO ()) -> IO ()
     continue cont = do
@@ -130,7 +157,8 @@ play song@Song.Song {..} fetchUrl fetchLyrics onBegin onTerminate onProgress onL
       atomically $ waitLock playerLock Acquired
       url <- fetchUrl song
       when (isJust url) $ do
-        hPutStrLn inHandle $ "V " ++ show (if playerMuted then 0 else playerVolume)
+        hPutStrLn inHandle $ "V " ++
+          show (if playerMuted then 0 else playerVolume)
         hPutStrLn inHandle $ "L " ++ fromJust url
         loop True (0, 0, Nothing) =<< hGetLine outHandle
 
@@ -150,13 +178,14 @@ play song@Song.Song {..} fetchUrl fetchLyrics onBegin onTerminate onProgress onL
       atomically $ releaseLock playerLock
 
   parentThreadId <- liftIO myThreadId
-  childThreadId <- liftIO $ forkFinally playerThread cleanUp
+  childThreadId <- liftIO (forkFinally playerThread cleanUp)
   void $ liftIO $ atomically $ do
     putTMVar mpg123Context PlayerContext {..}
     writeTVar playerState (Playing song)
+    -- Returns once the song starts playing.
     acquireLock playerLock
 
--- | pause, resume and stop are idempotent.
+-- | 'pause', 'resume' and 'stop' are idempotent.
 pause :: (MonadIO m, MonadReader Player m) => m ()
 pause = do
   Player {..} <- ask
@@ -196,6 +225,7 @@ stop = do
   when (isJust childThreadId) $ liftIO $ killThread (fromJust childThreadId)
   liftIO $ atomically $ waitLock playerLock Released
 
+-- | Updates the volume from the player state.
 updateVolume :: (MonadIO m, MonadReader Player m) => m ()
 updateVolume = do
   Player {..} <- ask

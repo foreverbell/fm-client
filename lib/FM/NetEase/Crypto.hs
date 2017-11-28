@@ -63,5 +63,6 @@ encryptSongId id = flip map hashValue $
     bytes = zipWith xor (map ord id) (concat (repeat key))
     hashValue = BS8.unpack $ Base64.encode $ BS.pack $ BA.unpack $ C.hashWith C.MD5 $ BS8.pack $ map chr bytes
 
+-- | Encrypts the password.
 encryptPassword :: String -> String
 encryptPassword = show . C.hashWith C.MD5 . BS8.pack

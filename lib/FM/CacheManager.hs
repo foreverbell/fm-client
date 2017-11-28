@@ -32,7 +32,9 @@ import qualified Data.ByteString.Lazy as BL
 import           Data.Default.Class (def)
 import           Data.Maybe (fromJust, isJust)
 import qualified Data.Vector as V
-import           System.Directory (doesFileExist, getDirectoryContents, removeFile)
+import           System.Directory ( doesFileExist
+                                  , getDirectoryContents
+                                  , removeFile)
 import           System.Exit (ExitCode (..))
 import           System.IO (hClose)
 import           System.Process (runInteractiveProcess, waitForProcess)
@@ -76,7 +78,8 @@ instance JSON.ToJSON SongWithLyrics where
                 , "title" .= title
                 , "album" .= album
                 , "artists" .= array artists
-                , "lyrics" .= JSON.object [ "time" .= array (map fst lyrics), "body" .= array (map snd lyrics) ]
+                , "lyrics" .= JSON.object [ "time" .= array (map fst lyrics)
+                                          , "body" .= array (map snd lyrics) ]
                 ]
     where array xs = JSON.Array (V.fromList (JSON.toJSON <$> xs))
 
@@ -98,20 +101,22 @@ initCache cachePath = do
       when (state == Released) (acquireLock queueLock)
       return result
     let hashPath = hashSongId (show uid)
-    (_, outHandle, errHandle, processHandle) <- runInteractiveProcess "aria2c" [ "--auto-file-renaming=false"
-                                                                               , "-d"
-                                                                               , cachePath
-                                                                               , "-o"
-                                                                               , hashPath ++ ".mp3"
-                                                                               , fromJust url ]
-                                                                               Nothing Nothing
+    (_, outHandle, errHandle, processHandle) <-
+      runInteractiveProcess "aria2c" [ "--auto-file-renaming=false"
+                                     , "-d"
+                                     , cachePath
+                                     , "-o"
+                                     , hashPath ++ ".mp3"
+                                     , fromJust url ]
+                                     Nothing Nothing
     exitCode <- waitForProcess processHandle
     hClose outHandle
     hClose errHandle
     if exitCode == ExitSuccess
       then do
         lyrics <- runSession netEaseSession (NetEase.fetchLyrics song)
-        BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json") (JSON.encode $ SongWithLyrics song lyrics)
+        BL.writeFile (cachePath ++ "/" ++ hashPath ++ ".json")
+                     (JSON.encode $ SongWithLyrics song lyrics)
       else do
         let path = cachePath ++ "/" ++ hashPath ++ ".mp3"
         void (try (removeFile path) :: IO (Either SomeException ()))
@@ -121,6 +126,7 @@ initCache cachePath = do
       when isEmpty (releaseLock queueLock)
   return Cache {..}
 
+-- | Waits until all caching tasks are finished.
 waitAllCacheTasks :: (MonadIO m) => Cache -> m ()
 waitAllCacheTasks Cache {..} = liftIO $ atomically $ waitLock queueLock Released
 
@@ -161,7 +167,8 @@ initSession Cache {..} = return $ SomeSession (Session cachePath)
 fetchCache :: (MonadIO m, MonadReader Session m) => m [Song.Song]
 fetchCache = do
   Session {..} <- ask
-  files <- liftIO $ filterM (isValid sessionCachePath) =<< getDirectoryContents sessionCachePath
+  files <- liftIO $ filterM (isValid sessionCachePath) =<<
+             getDirectoryContents sessionCachePath
   songs <- forM files $ \path -> do
     let fullPath = sessionCachePath ++ "/" ++ path
     song <- liftIO $ JSON.decode <$> BL.readFile fullPath
@@ -186,7 +193,8 @@ fetchUrl Song.Song {..} = return url
 
 fetchLyrics :: (MonadIO m, MonadReader Session m) => Song.Song -> m Song.Lyrics
 fetchLyrics Song.Song {..} = do
-  song <- liftIO $ JSON.decode <$> BL.readFile (take (length (fromJust url) - 3) (fromJust url) ++ "json")
+  song <- liftIO $ JSON.decode <$>
+    BL.readFile (take (length (fromJust url) - 3) (fromJust url) ++ "json")
   return $ case song of
     Just (SongWithLyrics _ lyrics) -> lyrics
     Nothing -> def

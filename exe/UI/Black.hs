@@ -41,5 +41,6 @@ black t m f = do
   writeChan chan Ohayou
   writeChan chan Oyasumi
   let title = fromMaybe [] t
-  (_, _, _, Just r) <- UI.customMain (UI.mkVty def) chan blackApp (title, m, f, Nothing)
+  (_, _, _, Just r) <-
+    UI.customMain (UI.mkVty def) chan blackApp (title, m, f, Nothing)
   return r

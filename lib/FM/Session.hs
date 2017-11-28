@@ -2,6 +2,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module FM.Session (
+  -- * Session
+  -- A session is either a NetEase FM session, or a cache session.
   MonadSession, runSession
 , IsSession
 , SomeSession (..)
@@ -23,5 +25,6 @@ class Typeable s => IsSession s
 data SomeSession = forall s. (IsSession s, Typeable s) => SomeSession s
   deriving (Typeable)
 
+-- | Unwraps the session from 'SomeSession'.
 fromSession :: (IsSession s, Typeable s) => SomeSession -> s
 fromSession (SomeSession k) = fromJust $ cast k

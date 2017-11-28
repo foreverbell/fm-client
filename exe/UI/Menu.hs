@@ -41,22 +41,30 @@ menuSelectionDraw State {..} = [ui]
 
 menuSelectionEvent :: State a -> UI.Event -> UI.EventM (UI.Next (State a))
 menuSelectionEvent state@State {..} event = case event of
-  UI.EvKey UI.KEsc [] -> UI.halt state
+  UI.EvKey UI.KEsc [] ->
+    UI.halt state
 
-  UI.EvKey (UI.KChar ' ') [] -> menuSelectionEvent state (UI.EvKey UI.KEnter [])
-  UI.EvKey UI.KEnter [] -> emptyGuard $ case continuation of
-                             Just continuation -> UI.suspendAndResume $ do
-                               continuation (menuSequence `S.index` currentIndex)
-                               return state { isSelected = True }
-                             Nothing -> UI.halt state { isSelected = True }
+  UI.EvKey (UI.KChar ' ') [] ->
+    menuSelectionEvent state (UI.EvKey UI.KEnter [])
+  UI.EvKey UI.KEnter [] -> emptyGuard $
+    case continuation of
+      Just continuation -> UI.suspendAndResume $ do
+        continuation (menuSequence `S.index` currentIndex)
+        return state { isSelected = True }
+      Nothing -> UI.halt state { isSelected = True }
 
-  UI.EvKey UI.KDown [] -> emptyGuard $ UI.continue $ state { currentIndex = (currentIndex + 1) `mod` S.length menuSequence }
+  UI.EvKey UI.KDown [] -> emptyGuard $
+    UI.continue $ state
+      { currentIndex = (currentIndex + 1) `mod` S.length menuSequence }
 
-  UI.EvKey UI.KUp [] -> emptyGuard $ UI.continue $ state { currentIndex = (currentIndex - 1) `mod` S.length menuSequence }
+  UI.EvKey UI.KUp [] -> emptyGuard $
+    UI.continue $ state
+      { currentIndex = (currentIndex - 1) `mod` S.length menuSequence }
 
   _ -> UI.continue state
 
-  where emptyGuard m = if S.null menuSequence then UI.continue state else m
+  where
+    emptyGuard m = if S.null menuSequence then UI.continue state else m
 
 menuSelectionApp :: (Show1 a) => UI.App (State a) UI.Event
 menuSelectionApp = UI.App { UI.appDraw = menuSelectionDraw

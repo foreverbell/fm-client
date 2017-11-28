@@ -53,7 +53,6 @@ data Session = Session {
 , sessionSecure  :: Bool
 , sessionCookies :: IORef HTTP.CookieJar
 } deriving (Typeable)
-
 instance IsSession Session
 
 data HTTPMethod = Post | Get | PostAndSaveCookies
@@ -63,7 +62,6 @@ data NetEaseException = NetEaseHTTPException HTTP.HttpException
                       | NetEaseParseException String
                       | NetEaseOtherExceptipon Int (Maybe String)
   deriving (Typeable, Show)
-
 instance Exception NetEaseException
 
 data ResponseMessage = ResponseMessage Int (Maybe String)
@@ -77,7 +75,11 @@ validateJSON r f = case r of
   Right x -> f x
   Left err -> liftIO $ throwM $ NetEaseParseException err
 
-sendRequest :: (MonadIO m, IsQuery q) => Session -> HTTPMethod -> String -> q -> m BS.ByteString
+sendRequest :: (MonadIO m, IsQuery q) => Session
+                                      -> HTTPMethod
+                                      -> String
+                                      -> q
+                                      -> m BS.ByteString
 sendRequest Session {..} method url query = liftIO $ case method of
     Get -> catch get (throwM . NetEaseHTTPException)
     Post -> catch (post False) (throwM . NetEaseHTTPException)
@@ -85,25 +87,27 @@ sendRequest Session {..} method url query = liftIO $ case method of
   where
     initRequest request = do
       cookies <- liftIO $ readIORef sessionCookies
-      return request { HTTP.requestHeaders =
-                         [ (HTTP.hAccept, "*/*")
-                         , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
-                         , (HTTP.hConnection, "keep-alive")
-                         , (HTTP.hContentType, "application/x-www-form-urlencoded")
-                         , (HTTP.hHost, "music.163.com")
-                         , (HTTP.hReferer, "http://music.163.com")
-                         , (HTTP.hUserAgent, "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Win64; x64; Trident/6.0)")
-                         ]
-                     , HTTP.cookieJar = Just cookies
-                     , HTTP.secure = sessionSecure
-                     , HTTP.port = if sessionSecure then 443 else 80
-                     }
+      return request
+        { HTTP.requestHeaders =
+            [ (HTTP.hAccept, "*/*")
+            , (HTTP.hAcceptLanguage, "zh-CN,zh;q=0.8,gl;q=0.6,zh-TW;q=0.4")
+            , (HTTP.hConnection, "keep-alive")
+            , (HTTP.hContentType, "application/x-www-form-urlencoded")
+            , (HTTP.hHost, "music.163.com")
+            , (HTTP.hReferer, "http://music.163.com")
+            , (HTTP.hUserAgent, "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Win64; x64; Trident/6.0)")
+            ]
+        , HTTP.cookieJar = Just cookies
+        , HTTP.secure = sessionSecure
+        , HTTP.port = if sessionSecure then 443 else 80
+        }
 
     post saveCookies = do
       initialRequest <- initRequest =<< HTTP.parseRequest url
-      send saveCookies $ initialRequest { HTTP.method = "POST"
-                                        , HTTP.requestBody = HTTP.RequestBodyBS $ fromQuery query
-                                        }
+      send saveCookies $ initialRequest
+        { HTTP.method = "POST"
+        , HTTP.requestBody = HTTP.RequestBodyBS $ fromQuery query
+        }
 
     get = do
       let action = mconcat [ url, "?", BS8.unpack $ fromQuery query ]
@@ -123,11 +127,15 @@ sendRequest Session {..} method url query = liftIO $ case method of
           validateJSON (JSON.eitherDecode (BL.fromStrict body)) $ \case
             ResponseMessage 200 _ -> return body
             ResponseMessage rc m -> throwM (NetEaseOtherExceptipon rc m)
-        _ -> throwM (NetEaseStatusCodeException statusCode (BS8.unpack <$> response))
+        _ -> throwM (NetEaseStatusCodeException statusCode
+                                                (BS8.unpack <$> response))
 
 initSession :: (MonadIO m) => Bool -> m SomeSession
 initSession sessionSecure = liftIO $ do
-  sessionManager <- HTTP.newManager (if sessionSecure then HTTP.tlsManagerSettings else HTTP.defaultManagerSettings)
+  let settings = if sessionSecure
+                   then HTTP.tlsManagerSettings
+                   else HTTP.defaultManagerSettings
+  sessionManager <- HTTP.newManager settings
   sessionUserId <- newIORef 0
   sessionCsrf <- newIORef []
   sessionCookies <- newIORef (HTTP.createCookieJar [])
@@ -142,13 +150,15 @@ instance IsQuery NetEaseQuery where
     [ ("params", text), ("encSecKey", key) ]
 
   fromQuery (FetchLyrics id) = HTTP.renderSimpleQuery False
-    [ ("os", "osx"), ("id", BS8.pack (show id)), ("lv", "-1"), ("kv", "-1"), ("tv", "-1") ]
+    [ ("os", "osx"), ("id", BS8.pack (show id))
+    , ("lv", "-1"), ("kv", "-1"), ("tv", "-1") ]
 
   fromQuery (FetchPlayLists uid) = HTTP.renderSimpleQuery False
     [ ("offset", "0"), ("limit", "1000"), ("uid", BS8.pack (show uid)) ]
 
 createSecretKey :: (MonadIO m) => Int -> m BS.ByteString
-createSecretKey n = mconcat <$> replicateM n (toHex <$> liftIO (getStdRandom $ randomR (0 :: Int, 15)))
+createSecretKey n = liftIO $
+  mconcat <$> replicateM n (toHex <$> getStdRandom (randomR (0 :: Int, 15)))
 
 encryptQuery :: (MonadIO m) => BS.ByteString -> m NetEaseQuery
 encryptQuery q = do
@@ -173,7 +183,8 @@ login userName password = do
   body <- sendRequest session PostAndSaveCookies loginURL request
   validateJSON (decodeUserId body) (liftIO . writeIORef sessionUserId)
   cookies <- liftIO $ HTTP.destroyCookieJar <$> readIORef sessionCookies
-  let csrf = BS8.unpack . HTTP.cookie_value <$> find (\HTTP.Cookie {..} -> cookie_name == "__csrf") cookies
+  let csrf = BS8.unpack . HTTP.cookie_value <$>
+               find (\HTTP.Cookie {..} -> cookie_name == "__csrf") cookies
   case csrf of
     Just csrf -> liftIO $ writeIORef sessionCsrf csrf
     Nothing -> return ()

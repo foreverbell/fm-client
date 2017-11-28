@@ -81,13 +81,15 @@ switchEditor state@State {..} = state { currentEditor = newEditor }
 loginDraw :: State -> [UI.Widget]
 loginDraw State {..} = [ui]
   where
-    ui = UI.vCenter $ if onGreetings
-            then UI.str []
-            else UI.vBox [ UI.mkYellow $ UI.hCenter $ UI.str "网易通行证登陆"
-                         , UI.separator
-                         , UI.hCenter $ UI.str "账号: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor userNameEditor)
-                         , UI.hCenter $ UI.str "密码: " <+> UI.hLimit 15 (UI.vLimit 1 $ UI.renderEditor passwordEditor)
-                         ]
+    newEditor editor = UI.hLimit 15 (UI.vLimit 1 (UI.renderEditor editor))
+    ui = UI.vCenter $
+      if onGreetings
+        then UI.str []
+        else UI.vBox [ UI.mkYellow $ UI.hCenter $ UI.str "网易通行证登陆"
+                     , UI.separator
+                     , UI.hCenter $ UI.str "账号: " <+> newEditor userNameEditor
+                     , UI.hCenter $ UI.str "密码: " <+> newEditor passwordEditor
+                     ]
 
 loginEvent :: State -> Event -> UI.EventM (UI.Next State)
 loginEvent state@State {..} event = case event of
@@ -95,7 +97,8 @@ loginEvent state@State {..} event = case event of
     session <- if isLocal musicSource
       then Cache.initSession cache
       else NetEase.initSession True
-    UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
+    UI.suspendAndResume $
+      continuation session >> postEvent Goodbye >> return state
 
   Hello -> do
     session <- liftIO $ try $ do
@@ -109,8 +112,14 @@ loginEvent state@State {..} event = case event of
           writeIORef netEaseSession (Just session)
           return session
     case session of
-      Left (_ :: SomeException) -> liftIO (writeIORef netEaseSession Nothing) >> UI.continue state { onGreetings = False }
-      Right session -> UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
+      Left (_ :: SomeException) ->
+        liftIO (writeIORef netEaseSession Nothing) >>
+          UI.continue state { onGreetings = False }
+      Right session ->
+        UI.suspendAndResume $
+          continuation session >>
+          postEvent Goodbye >>
+          return state
 
   Goodbye -> UI.halt state
 
@@ -118,14 +127,17 @@ loginEvent state@State {..} event = case event of
 
   Event (UI.EvKey UI.KEnter []) -> case currentEditor of
     PasswordEditor -> do
-      let [userName] = UI.getEditContents userNameEditor
-      let [password] = NetEase.encryptPassword <$> UI.getEditContents passwordEditor
+      let ([userName], [password]) =
+            ( UI.getEditContents userNameEditor
+            , NetEase.encryptPassword <$> UI.getEditContents passwordEditor
+            )
       session <- NetEase.initSession True
       liftIO $ do
         runSession session (NetEase.login userName password)
         writeLoginConfig (userName, password)
         writeIORef netEaseSession (Just session)
-      UI.suspendAndResume $ continuation session >> postEvent Goodbye >> return state
+      UI.suspendAndResume $
+        continuation session >> postEvent Goodbye >> return state
     UserNameEditor -> UI.continue $ switchEditor state
 
   Event (UI.EvKey (UI.KChar '\t') []) -> UI.continue $ switchEditor state
@@ -156,16 +168,17 @@ loginCont source netEaseSession cache continuation = void $ do
   chan <- newChan
   let postEvent = writeChan chan
   postEvent $ if requireLogin source then Hello else Hi
-  UI.customMain (UI.mkVty def) chan loginApp State { currentEditor = UserNameEditor
-                                                   , userNameEditor = editor1
-                                                   , passwordEditor = editor2
-                                                   , musicSource = source
-                                                   , netEaseSession = netEaseSession
-                                                   , cache = cache
-                                                   , onGreetings = True
-                                                   , postEvent = postEvent
-                                                   , continuation = continuation
-                                                   }
+  UI.customMain (UI.mkVty def) chan loginApp State
+    { currentEditor = UserNameEditor
+    , userNameEditor = editor1
+    , passwordEditor = editor2
+    , musicSource = source
+    , netEaseSession = netEaseSession
+    , cache = cache
+    , onGreetings = True
+    , postEvent = postEvent
+    , continuation = continuation
+    }
 
 login :: MusicSource -> NetEaseSavedSession -> Cache -> ContT () IO SomeSession
 login source netEaseSession cache = ContT (loginCont source netEaseSession cache)

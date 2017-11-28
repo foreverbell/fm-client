@@ -92,11 +92,18 @@ play state@State {..}
   | currentIndex == 0 = return state
   | otherwise = do
       let onBegin () = let Song.Song {..} = playSequence `S.index` (currentIndex - 1)
-                        in callProcess "notify-send" [title ++ "\n\n" ++ intercalate " / " artists ++ "\n\n" ++ album]
+                        in callProcess "notify-send" [ title ++ "\n\n" ++ intercalate " / " artists ++ "\n\n" ++ album]
       let onTerminate e = when e (postEvent (UserEventPending False))
       let onProgress p = postEvent (UserEventUpdateProgress p)
       let onLyrics l = postEvent (UserEventUpdateLyrics l)
-      liftPlayer state $ FM.play (playSequence `S.index` (currentIndex - 1)) (fetchUrl state) (fetchLyrics state) onBegin onTerminate onProgress onLyrics
+      liftPlayer state $
+        FM.play (playSequence `S.index` (currentIndex - 1))
+                (fetchUrl state)
+                (fetchLyrics state)
+                onBegin
+                onTerminate
+                onProgress
+                onLyrics
       return state { focusedIndex = currentIndex
                    , stopped = False
                    , progress = (0, 0)
@@ -158,12 +165,24 @@ deleteSong state@State {..} = do
 musicPlayerDraw :: State -> [UI.Widget]
 musicPlayerDraw State {..} = [ui]
   where
-    formatSong Song.Song {..} = printf "%s - %s - %s" title (intercalate " / " artists) album :: String
+    formatSong Song.Song {..} =
+      printf "%s - %s - %s" title (intercalate " / " artists) album :: String
 
     formatTime time = printf "%02d:%02d" minute second :: String
-      where (minute, second) = floor time `quotRem` 60 :: (Int, Int)
+      where
+        (minute, second) = floor time `quotRem` 60 :: (Int, Int)
 
-    ui = UI.vBox [UI.separator, title , UI.separator, bar1, UI.separator, bar2, UI.separator, lyrics, UI.separator, playList]
+    ui = UI.vBox [ UI.separator
+                 , title
+                 , UI.separator
+                 , bar1
+                 , UI.separator
+                 , bar2
+                 , UI.separator
+                 , lyrics
+                 , UI.separator
+                 , playList
+                 ]
 
     title = UI.mkYellow $ UI.hCenter $ UI.str body
       where
@@ -171,7 +190,10 @@ musicPlayerDraw State {..} = [ui]
              | otherwise = formatSong $ playSequence `S.index` (currentIndex - 1)
 
     bar1 | stopped = UI.separator
-         | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $ printf "[%s] (%s/%s)" (make '>' total occupied) (formatTime cur) (formatTime len)
+         | otherwise = UI.mkGreen $ UI.hCenter $ UI.str $
+             printf "[%s] (%s/%s)" (make '>' total occupied)
+                                   (formatTime cur)
+                                   (formatTime len)
       where
         (len, cur) = progress
         ratio = if len == 0 then 0 else cur / len
@@ -206,7 +228,10 @@ musicPlayerEvent state@State {..} event = case event of
         nextIndex <- case playMode of
           Stream -> return $ min (S.length playSequence) (currentIndex + 1)
           LoopOne -> return currentIndex
-          LoopAll -> return $ if currentIndex + 1 > S.length playSequence then 1 else currentIndex + 1
+          LoopAll -> return $
+            if currentIndex + 1 > S.length playSequence
+              then 1
+              else currentIndex + 1
           Shuffle -> liftIO $ randomRIO (1, S.length playSequence)
         UI.continue =<< play state { currentIndex = nextIndex }
       else UI.continue state
@@ -215,11 +240,14 @@ musicPlayerEvent state@State {..} event = case event of
 
   UserEventUpdateLyrics l -> UI.continue state { currentLyrics = l }
 
-  VtyEvent (UI.EvKey UI.KEsc []) -> if stopped
-    then UI.halt state
-    else UI.continue =<< stop state
+  VtyEvent (UI.EvKey UI.KEsc []) ->
+    if stopped
+      then UI.halt state
+      else UI.continue =<< stop state
 
-  VtyEvent (UI.EvKey (UI.KChar ' ') []) -> musicPlayerEvent state (VtyEvent $ UI.EvKey UI.KEnter [])
+  VtyEvent (UI.EvKey (UI.KChar ' ') []) ->
+    musicPlayerEvent state (VtyEvent $ UI.EvKey UI.KEnter [])
+
   VtyEvent (UI.EvKey UI.KEnter []) -> do
     pState <- liftIO $ atomically $ readTVar (FM.playerState player)
     UI.continue =<< case pState of
@@ -235,11 +263,15 @@ musicPlayerEvent state@State {..} event = case event of
           play state { currentIndex = focusedIndex }
       Stopped -> play state { currentIndex = focusedIndex }
 
-  VtyEvent (UI.EvKey UI.KUp []) -> UI.continue state { focusedIndex = max 0 (focusedIndex - 1) }
+  VtyEvent (UI.EvKey UI.KUp []) ->
+    UI.continue state { focusedIndex = max 0 (focusedIndex - 1) }
 
   VtyEvent (UI.EvKey UI.KDown []) -> do
     let needMore = focusedIndex == S.length playSequence && playMode == Stream
-    state@State {..} <- if needMore then liftIO (fetchMore state) else return state
+    state@State {..} <-
+      if needMore
+        then liftIO (fetchMore state)
+        else return state
     UI.continue state { focusedIndex = min (S.length playSequence) (focusedIndex + 1) }
 
   VtyEvent (UI.EvKey (UI.KChar '-') []) -> UI.continue =<< setVolume state (-10)
